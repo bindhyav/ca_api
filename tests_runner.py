@@ -58,6 +58,7 @@ def main() -> int:
     return pytest.main(args)
 
 
+
 if __name__ == "__main__":
-    """ Entry point for running tests with pytest. """
+    """ Entry point for running tests with pytest."""
     raise SystemExit(main())

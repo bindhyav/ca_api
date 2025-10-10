@@ -5,6 +5,7 @@ import subprocess
 import re
 import os
 from typing import Optional
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parent
@@ -58,7 +59,7 @@ def get_selected_device() -> str:
             for tok in re.split(r"[,\s]+", raw):
                 tok = clean(tok)
                 if tok:
-                    dev = tok
+                    device = tok
                     break
     # 2) Fallback: Jenkins workspace file written by pipeline
     if not device:
@@ -217,3 +218,45 @@ def get_product_details(adb_device):
         print(f"Name Details: {display_name}")
         print(f"Board Details: {board}")
         return board, display_name
+
+
+log_file_path = "window_dump.xml"
+
+def run_adb_commands():
+    try:
+        subprocess.run(["adb", "shell", "uiautomator", "dump"], check=True)
+        subprocess.run(["adb", "pull", "/sdcard/window_dump.xml"], check=True)
+        print("[INFO] UI dump pulled successfully.")
+    except Exception as e:
+        print(f"[ERROR] ADB command failed: {e}")
+
+def read_cmd_output_safe():
+    try:
+        with open(log_file_path, "r", encoding="utf-8") as f:
+            return f.read().lower()
+    except Exception as e:
+        print(f"[ERROR] Reading log failed: {e}")
+        return ""
+
+def extract_device_code_from_xml():
+    try:
+        tree = ET.parse(log_file_path)
+        root = tree.getroot()
+        for node in root.iter("node"):
+            text = node.attrib.get("text", "")
+            if re.fullmatch(r"[A-Z0-9]{8,}", text):
+                return text
+    except Exception as e:
+        print(f"[ERROR] Could not extract device code: {e}")
+    return None
+
+def main():
+    run_adb_commands()
+    code = extract_device_code_from_xml()
+    if code:
+        print(f"✅ Device login code found: {code}")
+    else:
+        print("❌ No valid device login code found.")
+
+if __name__ == "__main__":
+    main()

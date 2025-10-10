@@ -24,7 +24,6 @@ def test_on_demand_bugreport_appears():
         print(f"✓ Downloaded: {download_path}")
     try:
         camera_txt_main()
+
     except Exception as e:
         pytest.fail(f"Event extraction failed: {e}")
-        return
-

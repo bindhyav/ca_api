@@ -3,6 +3,8 @@
 import time
 from datetime import datetime, timedelta, timezone
 import pytest
+from jinja2.utils import missing
+
 from modules import events as ev
 from modules.extraction import dump_event_main
 from modules.version import get_collabos_version, get_collab_version_from_adb
@@ -162,3 +164,89 @@ def test_on_demand_bugreport_appears():
     else:
         assert download_path and isinstance(download_path, str)
         print(f"Downloaded: {download_path}")
+
+
+def test_search_all_events():
+    event_names = [
+        "BugReportStart",
+        "BugReportFinish",
+        "BugReportsSettingsUpdate",
+        "DropBoxEntryAdded",
+        "PeripheralDeviceConnected",
+        "RightSightSettings",
+       ]
+
+    # ---- 1) Auth & setup ----
+    if not util.have_auth():
+        pytest.skip("Missing auth in config/auth.txt or cookie in config/cookie.txt")
+    headers = util.build_headers()
+    # ---- 2) Reboot device and get window ----
+    serial = util.get_selected_device()
+    reboot_ist = ev.reboot_and_wait(serial)
+    from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
+    to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
+    print(f"\nSearching all events between {from_iso} and {to_iso}")
+    deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
+    found_events = []
+    missing_events = event_names.copy()
+    found = False
+    while datetime.now(ev.IST) < deadline and not found:
+        page = ev.scan_window(headers, from_iso, to_iso)
+        print(f"scanned {len(page)} event at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
+        for name in event_names:
+            if name in found_events:
+                continue
+            matches= [
+                item for item in page
+                if any(
+                    isinstance(v, str) and name in v
+                    for v in item.values()
+                )
+            ]
+            if matches:
+                ts=matches[0].get("timestamp")
+                print(f"{name} found at {ev.ts_ms_to_ist(ts) if ts else 'n/a'}")
+                found_events.append(name)
+                missing_events.remove(name)
+
+        if missing_events:
+            print(f"waiting for:{missing_events}")
+            time.sleep(ev.POLL_INTERVAL_MIN * 60)
+    print("\n===== Summary =====")
+    print(f"✅ Found: {found_events}")
+    print(f"❌ Missing: {missing_events}")
+    assert not missing_events, f"Missing events after polling: {missing_events}"
+
+    # # ---- 3) Scan logs once ----
+    # page = ev.scan_window(headers, from_iso, to_iso)
+    # print(f"Total events scanned: {len(page)}")
+    #
+    # # ---- 4) Search all event names ----
+    # found_events = []
+    # missing_events = []
+    #
+    # for name in event_names:
+    #     matches = [
+    #         item for item in page
+    #         if any(
+    #             isinstance(v, str) and name in v
+    #             for v in item.values()
+    #         )
+    #     ]
+    #     if matches:
+    #         ts = matches[0].get("timestamp")
+    #         if ts:
+    #             print(f"✅ {name} found at {ev.ts_ms_to_ist(ts)}")
+    #         else:
+    #             print(f"✅ {name} found (no timestamp field)")
+    #         found_events.append(name)
+    #     else:
+    #         print(f"❌ {name} not found in log window")
+    #         missing_events.append(name)
+    #
+    # # ---- 5) Final result summary ----
+    # print("\n===== Summary =====")
+    # print(f"✅ Found: {len(found_events)} events")
+    # print(f"❌ Missing: {len(missing_events)} events")
+    #
+    # assert not missing_events, f"Missing events in logs: {missing_events}"

@@ -32,10 +32,10 @@ Timezones:
 """
 
 from __future__ import annotations
-import time, subprocess, requests, re
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
+import time, subprocess, re, requests
 from utils import get_serial_number,get_selected_device, get_auth_and_cookie
 
 # -----Configuration -----
