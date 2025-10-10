@@ -1,0 +1,10 @@
+[
+  "BugReportStart",
+  "BugReportFinish",
+  "BugReportsSettingsUpdate",
+  "DropBoxEntryAdded",
+  "PeripheralDeviceConnected",
+  "RightSightSettings",
+  "Bort_DiskStats",
+  "ConnectedDisplay"
+]
