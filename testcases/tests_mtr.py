@@ -2,8 +2,9 @@
 
 import time
 from datetime import datetime, timedelta, timezone
+import json
 import pytest
-import os, json
+import os
 from utils import get_auth_and_cookie
 from modules import events as ev
 from modules.extraction import dump_event_main, search_edid_file
@@ -75,7 +76,7 @@ def test_events_bort():
         return
 
 
-def test_events_Display():
+def test_events_display():
     """
     End-to-end check:
       1) build headers from config
@@ -165,7 +166,7 @@ def test_on_demand_bugreport_appears():
         assert download_path and isinstance(download_path, str)
         print(f"Downloaded: {download_path}")
 
-def test_on_demand_bugreport_appears():
+def test_edid_file():
     # --- auth from your config files ---
     jwt, cookie = get_auth_and_cookie()
     # jwt = generate.load(generate.AUTH_PATH)
@@ -202,7 +203,7 @@ def test_search_all_events_with_wait():
     """
     # ---- load event names from JSON ----
     here = os.path.dirname(__file__)
-    events_json = os.path.abspath(here, "event_file.json")
+    events_json = os.path.abspath("event_file.json")
     try:
         with open(events_json, "r", encoding="utf-8") as f:
             event_names = json.load(f)
