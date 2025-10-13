@@ -4,9 +4,9 @@ import time
 from datetime import datetime, timedelta, timezone
 import pytest
 import os, json
-
+from utils import get_auth_and_cookie
 from modules import events as ev
-from modules.extraction import dump_event_main
+from modules.extraction import dump_event_main, search_edid_file
 from modules.version import get_collabos_version, get_collab_version_from_adb
 from modules.mode import fetch_device_mode
 import utils as util
@@ -165,63 +165,80 @@ def test_on_demand_bugreport_appears():
         assert download_path and isinstance(download_path, str)
         print(f"Downloaded: {download_path}")
 
+def test_on_demand_bugreport_appears():
+    # --- auth from your config files ---
+    jwt, cookie = get_auth_and_cookie()
+    # jwt = generate.load(generate.AUTH_PATH)
+    # cookie = generate.load(generate.COOKIE_PATH)
+    if not (jwt or cookie):
+        pytest.skip("Missing auth/cookie in ./config (auth.txt or cookie.txt)")
+
+    # --- trigger via ADB (no download) ---
+    trigger_time = generate.trigger_on_demand(generate.DEVICE)
+
+    try:
+        download_path = generate.poll_and_download_ondemand(
+            jwt, cookie, trigger_time,
+            poll_minutes=10, poll_every_sec=60
+        )
+    except TimeoutError:
+        pytest.fail("✗ ON-DEMAND bugreport did not appear within the poll window.")
+    else:
+        assert download_path and isinstance(download_path, str)
+        print(f"✓ Downloaded: {download_path}")
+    # ---- 5) Extract events from the downloaded bug report ----
+    try:
+        search_edid_file()
+
+    except Exception as e:
+        pytest.fail(f"Event extraction failed: {e}")
+        return
+
 
 def test_search_all_events_with_wait():
-    # -------- load event names from JSON (same dir as this test) --------
+    """
+    Poll the event logs until each event listed in event_names.json appears
+    (or until POLL_TIMEOUT_MIN expires).
+    """
+    # ---- load event names from JSON ----
     here = os.path.dirname(__file__)
-    events_json = os.path.join(here, "event_file.json")
-
+    events_json = os.path.abspath(here, "event_file.json")
     try:
         with open(events_json, "r", encoding="utf-8") as f:
             event_names = json.load(f)
         if not isinstance(event_names, list) or not all(isinstance(x, str) for x in event_names):
-            raise ValueError("event_names.json must be a JSON array of strings.")
+            raise ValueError("event_names.json must contain an array of strings.")
     except FileNotFoundError:
         pytest.skip("Missing event_names.json next to tests_mtr.py")
     except Exception as e:
         pytest.fail(f"Failed to read event_names.json: {e}")
         return
 
-    # -------- 1) Setup (same style as other tests) --------
+
     if not util.have_auth():
         pytest.skip("Missing auth in config/auth.txt or cookie in config/cookie.txt")
     headers = util.build_headers()
     serial = util.get_selected_device()
     reboot_ist = ev.reboot_and_wait(serial)
 
-    # -------- 2) Fixed time window --------
+    # ---- 2) Define time window ----
     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
     print(f"\nPolling logs between {from_iso} and {to_iso}")
 
-    # -------- 3) Polling loop --------
+    # ---- 3) Poll until events appear ----
     deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
-    found_events = []
-    missing_events = list(event_names)
-
-    def _match_by_name(item: dict, name: str) -> bool:
-        """Generic match: look for the event name in common string fields."""
-        if not isinstance(item, dict):
-            return False
-        # top-level string fields
-        for k, v in item.items():
-            if isinstance(v, str) and name in v:
-                return True
-        # common nested payload dict
-        payload = item.get("payload")
-        if isinstance(payload, dict):
-            for v in payload.values():
-                if isinstance(v, str) and name in v:
-                    return True
-        return False
+    found_events, missing_events = [], list(event_names)
 
     while datetime.now(ev.IST) < deadline and missing_events:
         page = ev.scan_window(headers, from_iso, to_iso)
         print(f"Scanned {len(page)} events at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
 
-        # check any still-missing event against this page
         for name in list(missing_events):
-            matches = [it for it in page if _match_by_name(it, name)]
+            matches = [
+                item for item in page
+                if any(isinstance(v, str) and name.lower() in v.lower() for v in item.values())
+            ]
             if matches:
                 ts = matches[0].get("timestamp")
                 when = ev.ts_ms_to_ist(ts) if ts else "unknown time"
@@ -232,95 +249,8 @@ def test_search_all_events_with_wait():
         if missing_events:
             print(f"Waiting for: {missing_events}")
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
-
-    # -------- 4) Summary & assertion --------
     print("\n===== Summary =====")
     print(f"✅ Found: {found_events}")
     print(f"❌ Missing: {missing_events}")
     assert not missing_events, f"Missing events after polling: {missing_events}"
 
-
-# def test_search_all_events():
-#     event_names = [
-#         "BugReportStart",
-#         "BugReportFinish",
-#         "BugReportsSettingsUpdate",
-#         "DropBoxEntryAdded",
-#         "PeripheralDeviceConnected",
-#         "RightSightSettings",
-#        ]
-#
-#     # ---- 1) Auth & setup ----
-#     if not util.have_auth():
-#         pytest.skip("Missing auth in config/auth.txt or cookie in config/cookie.txt")
-#     headers = util.build_headers()
-#     # ---- 2) Reboot device and get window ----
-#     serial = util.get_selected_device()
-#     reboot_ist = ev.reboot_and_wait(serial)
-#     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
-#     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
-#     print(f"\nSearching all events between {from_iso} and {to_iso}")
-#     deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
-#     found_events = []
-#     missing_events = event_names.copy()
-#     found = False
-#     while datetime.now(ev.IST) < deadline and not found:
-#         page = ev.scan_window(headers, from_iso, to_iso)
-#         print(f"scanned {len(page)} event at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
-#         for name in event_names:
-#             if name in found_events:
-#                 continue
-#             matches= [
-#                 item for item in page
-#                 if any(
-#                     isinstance(v, str) and name in v
-#                     for v in item.values()
-#                 )
-#             ]
-#             if matches:
-#                 ts=matches[0].get("timestamp")
-#                 print(f"{name} found at {ev.ts_ms_to_ist(ts) if ts else 'n/a'}")
-#                 found_events.append(name)
-#                 missing_events.remove(name)
-#
-#         if missing_events:
-#             print(f"waiting for:{missing_events}")
-#             time.sleep(ev.POLL_INTERVAL_MIN * 60)
-#     print("\n===== Summary =====")
-#     print(f"✅ Found: {found_events}")
-#     print(f"❌ Missing: {missing_events}")
-#     assert not missing_events, f"Missing events after polling: {missing_events}"
-
-    # # ---- 3) Scan logs once ----
-    # page = ev.scan_window(headers, from_iso, to_iso)
-    # print(f"Total events scanned: {len(page)}")
-    #
-    # # ---- 4) Search all event names ----
-    # found_events = []
-    # missing_events = []
-    #
-    # for name in event_names:
-    #     matches = [
-    #         item for item in page
-    #         if any(
-    #             isinstance(v, str) and name in v
-    #             for v in item.values()
-    #         )
-    #     ]
-    #     if matches:
-    #         ts = matches[0].get("timestamp")
-    #         if ts:
-    #             print(f"✅ {name} found at {ev.ts_ms_to_ist(ts)}")
-    #         else:
-    #             print(f"✅ {name} found (no timestamp field)")
-    #         found_events.append(name)
-    #     else:
-    #         print(f"❌ {name} not found in log window")
-    #         missing_events.append(name)
-    #
-    # # ---- 5) Final result summary ----
-    # print("\n===== Summary =====")
-    # print(f"✅ Found: {len(found_events)} events")
-    # print(f"❌ Missing: {len(missing_events)} events")
-    #
-    # assert not missing_events, f"Missing events in logs: {missing_events}"

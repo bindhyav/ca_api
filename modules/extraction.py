@@ -136,6 +136,38 @@ def dump_event_main():
     # Step 3: Search for specific string in target txt files
     search_string = search_string_in_prefixed_file(EXTRACT_DIR, SEARCH_PREFIX, SEARCH_STRING)
     return search_string
+def search_edid_file():
+    zip_path = get_latest_bugreport_zip()
+    if not zip_path:
+        return
+
+    clean_and_prepare_extract_dir()
+
+    # Step 1: Extract main zip
+    extract_with_7zip(zip_path, EXTRACT_DIR)
+
+    # Step 2: Recursively extract nested zips
+    print("Extracting nested zip files using 7-Zip...")
+    while extract_all_nested_zips(EXTRACT_DIR):
+        pass  # Keep extracting until no zip files remain
+
+    # Step 3: Search for edid file
+    edid_file_path = find_edid_file(EXTRACT_DIR)
+    return edid_file_path
+
+def find_edid_file(root_dir):
+    print(f"Searching for edid files in ...")
+    found_files = []
+    for dirpath, _, files in os.walk(root_dir):
+        for file in files:
+            if "edid" in file.lower():
+                full_path = os.path.join(dirpath, file)
+                found_files.append(full_path)
+    if found_files:
+        print("Found edid files:")
+        for f in found_files:
+            print(f"{f}")
+    return found_files
 
 
 if __name__ == "__main__":
