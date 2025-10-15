@@ -5,7 +5,7 @@
   "DropBoxEntryAdded",
   "PeripheralDeviceConnected",
   "RightSightSettings",
-  "Bort_DiskStats",
-  "ConnectedDisplay"
+  "Bort_LoggingMode",
+  "Bort_BugReportGenerateComplete"
 
 ]

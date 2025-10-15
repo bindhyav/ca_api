@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 import pytest
 from modules import events as ev
-from modules.extraction import dump_event_main
+from modules.extraction import dump_event_main, extract_partner_file
 from modules.version import get_collabos_version, get_collab_version_from_adb
 from modules.mode import fetch_device_mode
 import utils as util
@@ -167,3 +167,27 @@ def test_on_demand_bugreport_appears():
     else:
         assert download_path and isinstance(download_path, str)
         print(f" Downloaded: {download_path}")
+
+def test_partner_logs_file():
+    """trigger ON-DEMAND bugreport generation"""
+    jwt, cookie = util.get_auth_and_cookie()
+    if not (jwt or cookie):
+        pytest.skip("Missing auth/cookie in ./config (auth.txt or cookie.txt)")
+    trigger_time = generate.trigger_on_demand(generate.DEVICE)
+    try:
+        download_path = generate.poll_and_download_ondemand(
+            jwt, cookie, trigger_time,
+            poll_minutes=10, poll_every_sec=60
+        )
+    except TimeoutError:
+        pytest.fail("ON-DEMAND bugreport did not appear within the poll window.")
+    else:
+        assert download_path and isinstance(download_path, str)
+        print(f" Downloaded: {download_path}")
+    try:
+        extract_partner_file()
+    except Exception as e:
+        pytest.fail(f"Event extraction failed: {e}")
+        return
+
+
