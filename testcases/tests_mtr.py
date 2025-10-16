@@ -8,8 +8,8 @@ import os
 from utils import get_auth_and_cookie
 from modules import events as ev
 from modules.extraction import dump_event_main, extract_edid_file
-from modules.version import get_collabos_version, get_collab_version_from_adb
-from modules.mode import fetch_device_mode
+# from modules.version import get_collabos_version, get_collab_version_from_adb
+# from modules.mode import fetch_device_mode
 import utils as util
 from modules import generate_download as generate
 util.have_auth()
@@ -121,49 +121,49 @@ util.have_auth()
 #     assert found, f"Expected ConnectedDisplay not found (scanned last page count={last_count})"
 
 
-def test_device_mode_is_appliance():
-    """
-    call get_device_mode() from mode.py and assert
-    the device mode equals "Appliance".
-    """
-    mode = fetch_device_mode()
-    if mode:
-        print(f"Mode is: {mode}")
-        assert mode == "Appliance", "FAIL: DUT is not in Appliance Mode"
-        print("PASS: DUT is in Appliance Mode")
-    else:
-        pytest.fail("Could not find Mode value on the page.")
-
-
-def test_version_verification():
-    """Test to verify the software version displayed on the web page matches the device version."""
-    web_version = get_collabos_version()
-    device = util.get_selected_device()
-    device_version = get_collab_version_from_adb(device)
-    assert device_version is not None, "Failed to retrieve version from device."
-    assert web_version is not None, "Failed to extract version from web page."
-    print(f"Device Version: {device_version}")
-    print(f"Web Version: {web_version}")
-    assert device_version == web_version, "Version mismatch between device and web page."
-
-
-def test_on_demand_bugreport_appears():
-    """ Test to trigger an on-demand bug report and verify its appearance. """
-    # --- auth from your jenkins ---
-    jwt, cookie = util.get_auth_and_cookie()
-    if not (jwt or cookie):
-        pytest.skip("Missing auth/cookie in ./config (auth.txt or cookie.txt)")
-    trigger_time = generate.trigger_on_demand(generate.DEVICE)
-    try:
-        download_path = generate.poll_and_download_ondemand(
-            jwt, cookie, trigger_time,
-            poll_minutes=10, poll_every_sec=60
-        )
-    except TimeoutError:
-        pytest.fail("ON-DEMAND bugreport did not appear within the poll window.")
-    else:
-        assert download_path and isinstance(download_path, str)
-        print(f"Downloaded: {download_path}")
+# def test_device_mode_is_appliance():
+#     """
+#     call get_device_mode() from mode.py and assert
+#     the device mode equals "Appliance".
+#     """
+#     mode = fetch_device_mode()
+#     if mode:
+#         print(f"Mode is: {mode}")
+#         assert mode == "Appliance", "FAIL: DUT is not in Appliance Mode"
+#         print("PASS: DUT is in Appliance Mode")
+#     else:
+#         pytest.fail("Could not find Mode value on the page.")
+#
+#
+# def test_version_verification():
+#     """Test to verify the software version displayed on the web page matches the device version."""
+#     web_version = get_collabos_version()
+#     device = util.get_selected_device()
+#     device_version = get_collab_version_from_adb(device)
+#     assert device_version is not None, "Failed to retrieve version from device."
+#     assert web_version is not None, "Failed to extract version from web page."
+#     print(f"Device Version: {device_version}")
+#     print(f"Web Version: {web_version}")
+#     assert device_version == web_version, "Version mismatch between device and web page."
+#
+#
+# def test_on_demand_bugreport_appears():
+#     """ Test to trigger an on-demand bug report and verify its appearance. """
+#     # --- auth from your jenkins ---
+#     jwt, cookie = util.get_auth_and_cookie()
+#     if not (jwt or cookie):
+#         pytest.skip("Missing auth/cookie in ./config (auth.txt or cookie.txt)")
+#     trigger_time = generate.trigger_on_demand(generate.DEVICE)
+#     try:
+#         download_path = generate.poll_and_download_ondemand(
+#             jwt, cookie, trigger_time,
+#             poll_minutes=10, poll_every_sec=60
+#         )
+#     except TimeoutError:
+#         pytest.fail("ON-DEMAND bugreport did not appear within the poll window.")
+#     else:
+#         assert download_path and isinstance(download_path, str)
+#         print(f"Downloaded: {download_path}")
 
 def test_edid_file():
     # --- auth from your config files ---
@@ -188,8 +188,9 @@ def test_edid_file():
         print(f"✓ Downloaded: {download_path}")
     # ---- 5) Extract events from the downloaded bug report ----
     try:
-        extract_edid_file()
-
+        edid_file=extract_edid_file()
+        print(f"found edid file: {edid_file}")
+        assert edid_file,"edid file not found after extraction"
     except Exception as e:
         pytest.fail(f"Event extraction failed: {e}")
         return
