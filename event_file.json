@@ -1,11 +1,30 @@
 [
-  "BugReportStart",
-  "BugReportFinish",
-  "BugReportsSettingsUpdate",
-  "DropBoxEntryAdded",
-  "PeripheralDeviceConnected",
-  "RightSightSettings",
-  "Bort_LoggingMode",
-  "Bort_BugReportGenerateComplete"
-
+  {
+    "event": "Bort_LoggingMode",
+    "key": "collectionMode",
+    "expected_value": "CONTINUOUS"
+  },
+  {
+    "event": "Bort_LoggingMode",
+    "key": "collectionMode",
+    "expected_value": "PERIODIC"
+  },
+  {
+    "event":"BugReportStart",
+    "key": "file",
+    "expected_value": ".mar"
+  },
+  {
+    "event":"BugReportFinish",
+    "key": "file",
+    "expected_value": ".mar"
+  },
+  {
+    "event":"Bort_BugReportGenerateComplete",
+    "key": "path",
+    "expected_value": ".zip"
+  },
+  {
+    "event": "BugReportAlreadyPending"
+  }
 ]

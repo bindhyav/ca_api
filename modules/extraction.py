@@ -179,9 +179,10 @@ def extract_partner_file():
         pass  # Keep extracting until no zip files remain
 
     # Step 3: Search for edid file
-    partner_file_path = find_partnerlog_file(EXTRACT_DIR)
+    partner_file_path = find_partner_log_file(EXTRACT_DIR)
     return partner_file_path
-def find_partnerlog_file(root_dir):
+
+def find_partner_log_file(root_dir):
     print(f"Searching for partnerlog files in ...")
     found_files = []
     for dirpath, _, files in os.walk(root_dir):
