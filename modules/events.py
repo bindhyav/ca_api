@@ -35,7 +35,7 @@ DEVICE_ID = get_serial_number(DEVICE)  # analytics device id
 PRE_REBOOT_MIN = 2
 POST_REBOOT_MIN = 5
 POLL_INTERVAL_MIN = 3
-POLL_TIMEOUT_MIN = 30
+POLL_TIMEOUT_MIN = 45
 PAGE_LIMIT = 200
 IST = timezone(timedelta(hours=5, minutes=30))
 
