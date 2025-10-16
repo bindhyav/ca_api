@@ -23,8 +23,5 @@
     "event":"Bort_BugReportGenerateComplete",
     "key": "path",
     "expected_value": ".zip"
-  },
-  {
-    "event": "BugReportAlreadyPending"
   }
 ]

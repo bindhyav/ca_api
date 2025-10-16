@@ -166,6 +166,8 @@ def find_edid_file(root_dir):
         for f in found_files:
             print(f"{f}")
     return found_files
+
+
 def extract_partner_file():
     zip_path = get_latest_bugreport_zip()
     if not zip_path:
@@ -181,6 +183,7 @@ def extract_partner_file():
     # Step 3: Search for edid file
     partner_file_path = find_partner_log_file(EXTRACT_DIR)
     return partner_file_path
+
 
 def find_partner_log_file(root_dir):
     print(f"Searching for partnerlog files in ...")

@@ -185,7 +185,9 @@ def test_partner_logs_file():
         assert download_path and isinstance(download_path, str)
         print(f" Downloaded: {download_path}")
     try:
-        extract_partner_file()
+        partner_file=extract_partner_file()
+        print(f" Partner logs file found at: {partner_file}")
+        assert partner_file,"partner file not found after extraction"
     except Exception as e:
         pytest.fail(f"Event extraction failed: {e}")
         return
