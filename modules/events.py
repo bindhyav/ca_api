@@ -35,7 +35,7 @@ DEVICE_ID = get_serial_number(DEVICE)  # analytics device id
 PRE_REBOOT_MIN = 2
 POST_REBOOT_MIN = 5
 POLL_INTERVAL_MIN = 3
-POLL_TIMEOUT_MIN = 45
+POLL_TIMEOUT_MIN = 30
 PAGE_LIMIT = 200
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -245,4 +245,18 @@ def ts_ms_to_ist(ms: int) -> str:
         Formatted timestamp string in IST.
     """
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+def _find_value_in_dict(d, key):
+    """Return the value for key if present somewhere in nested dicts (non-cyclic, shallow recursion)."""
+    if not isinstance(d, dict):
+        return None
+    if key in d:
+        return d[key]
+    for v in d.values():
+        if isinstance(v, dict):
+            found = _find_value_in_dict(v, key)
+            if found is not None:
+                return found
+    return None
 

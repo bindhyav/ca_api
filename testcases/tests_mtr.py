@@ -195,7 +195,6 @@ util.have_auth()
 #         pytest.fail(f"Event extraction failed: {e}")
 #         return
 
-
 def test_events_from_json_simple():
     """
     Simple and generic test:
@@ -211,18 +210,21 @@ def test_events_from_json_simple():
     # --- Auth setup ---
     if not util.have_auth():
         pytest.skip("Missing auth/cookie")
+
     headers = util.build_headers()
     serial = util.get_selected_device()
     reboot_ist = ev.reboot_and_wait(serial)
+
     # --- Define time window ---
     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
     print(f"Scanning logs from {from_iso} to {to_iso}")
 
-   # --- Load event list from JSON ---
+    # --- Load event list from JSON ---
     here = os.path.dirname(__file__)
     project_root = os.path.dirname(here)
     events_json = os.path.join(project_root, "event_file.json")
+
     try:
         with open(events_json, "r", encoding="utf-8") as f:
             event_data = json.load(f)
@@ -231,10 +233,12 @@ def test_events_from_json_simple():
         return
 
     print(f"Loaded {len(event_data)} events from JSON")
+
     # --- Start polling ---
     deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
     pending = event_data.copy()
     found = []
+
     while datetime.now(ev.IST) < deadline and pending:
         page = ev.scan_window(headers, from_iso, to_iso)
         print(f"Scanned {len(page)} events at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
@@ -246,22 +250,47 @@ def test_events_from_json_simple():
 
             for item in page:
                 # 1. Check if event name matches
-                if item.get("type") == event_name:
-                    # 2. Check if key exists and contains expected value
-                    actual_value = str(item.get(key, ""))
-                    if expected_value.lower() in actual_value.lower():
-                        ts = item.get("timestamp")
-                        when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"{event_name}: '{key}' contains '{expected_value}' at {when}")
-                        found.append(event_name)
-                        pending.remove(entry)
-                        break
-                    else:
-                        print(f"{event_name}: key '{key}' present but value '{actual_value}' "
-                              f"does not contain '{expected_value}'")
+                if item.get("type") != event_name:
+                    continue
+
+                # 2. Parse details (if string)
+                details = item.get("details", {})
+                if isinstance(details, str):
+                    try:
+                        details = json.loads(details)
+                    except Exception:
+                        details = {}
+
+                # 3. Try fetching value from top-level or nested dict
+                top_val = item.get(key)
+                detail_val = ev._find_value_in_dict(details, key)
+
+                if top_val not in (None, ""):
+                    candidate = str(top_val)
+                elif detail_val not in (None, ""):
+                    candidate = str(detail_val)
+                else:
+                    raw_details_str = item.get("details", "")
+                    candidate = raw_details_str or ""
+
+                # 4. Compare with expected value
+                if expected_value.lower() in candidate.lower():
+                    ts = item.get("timestamp")
+                    when = ev.ts_ms_to_ist(ts) if ts else "unknown"
+                    print(f"✓ {event_name}: '{key}' contains '{expected_value}' at {when}")
+                    found.append(event_name)
+                    pending.remove(entry)
+                    break
+                else:
+                    print(
+                        f"✗ {event_name}: key '{key}' present but value '{candidate}' "
+                        f"does not contain '{expected_value}'"
+                    )
+
         if pending:
             print(f"Waiting for: {[p['event'] for p in pending]}")
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
+
     print("\n===== Summary =====")
     print(f"Found: {found}")
     print(f"Missing: {[p['event'] for p in pending]}")

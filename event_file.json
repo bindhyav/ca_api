@@ -20,7 +20,7 @@
     "expected_value": ".mar"
   },
   {
-    "event":"Bort_BugReportGenerateComplete",
+    "event": "Bort_BugReportGenerateComplete",
     "key": "path",
     "expected_value": ".zip"
   }
