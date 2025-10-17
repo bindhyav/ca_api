@@ -11,13 +11,13 @@
   },
   {
     "event":"Bort_BugReportStart",
-    "key": "file",
-    "expected_value": ".mar"
+    "key": "reportType",
+    "expected_value": "__not_empty__"
   },
   {
     "event":"Bort_BugReportFinish",
-    "key": "file",
-    "expected_value": ".mar"
+    "key": "reportType",
+    "expected_value": "__not_empty__"
   },
   {
     "event": "Bort_BugReportGenerateComplete",

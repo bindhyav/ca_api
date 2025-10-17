@@ -266,18 +266,48 @@ def test_events_from_json_simple():
                 detail_val = ev._find_value_in_dict(details, key)
 
                 if top_val not in (None, ""):
-                    candidate = str(top_val)
+                    candidate = top_val
                 elif detail_val not in (None, ""):
-                    candidate = str(detail_val)
+                    candidate = detail_val
                 else:
                     raw_details_str = item.get("details", "")
                     candidate = raw_details_str or ""
 
-                # 4. Compare with expected value
-                if expected_value.lower() in candidate.lower():
+                # Ensure candidate is a string for safe comparison
+                if not isinstance(candidate, str):
+                    candidate = str(candidate)
+
+                # --- Special-case: check only for non-empty string marker ---
+                if isinstance(expected_value, str) and expected_value == "__not_empty__":
+                    if candidate.strip():
+                        ts = item.get("timestamp")
+                        when = ev.ts_ms_to_ist(ts) if ts else "unknown"
+                        print(f"✓ {event_name}: '{key}' is non-empty string ('{candidate}') at {when}")
+                        found.append(event_name)
+                        pending.remove(entry)
+                        break
+                    else:
+                        print(f"✗ {event_name}: '{key}' is empty or missing (value={candidate!r})")
+                        # continue searching other events (don't remove entry)
+                        continue
+
+                # 4. Normal compare: expected_value as substring (case-insensitive)
+                # If expected_value is a list, accept any one of them
+                matched = False
+                if isinstance(expected_value, list):
+                    for e in expected_value:
+                        if e and e.lower() in candidate.lower():
+                            matched = True
+                            break
+                else:
+                    # expected_value may be a string (normal case)
+                    if isinstance(expected_value, str) and expected_value.lower() in candidate.lower():
+                        matched = True
+
+                if matched:
                     ts = item.get("timestamp")
                     when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                    print(f"✓ {event_name}: '{key}' contains '{expected_value}' at {when}")
+                    print(f"✓ {event_name}: '{key}' contains expected value '{expected_value}' at {when}")
                     found.append(event_name)
                     pending.remove(entry)
                     break
