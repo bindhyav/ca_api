@@ -179,24 +179,24 @@ def extract_partner_file():
     print("Extracting nested zip files using 7-Zip...")
     while extract_all_nested_zips(EXTRACT_DIR):
         pass  # Keep extracting until no zip files remain
-
-    # Step 3: Search for edid file
+    # Step 3: Search for partner file
     partner_file_path = find_partner_log_file(EXTRACT_DIR)
     return partner_file_path
 
-
 def find_partner_log_file(root_dir):
-    print(f"Searching for partnerlog files in ...")
+    print(f"Searching for partner log files in ...")
     found_files = []
     for dirpath, _, files in os.walk(root_dir):
         for file in files:
-            if "partnerlog" in file.lower():
+            if file.lower().endswith(".log"):
                 full_path = os.path.join(dirpath, file)
                 found_files.append(full_path)
     if found_files:
-        print("Found partnerlog files:")
+        print("Found partner log files:")
         for f in found_files:
             print(f"{f}")
+    else:
+        print(f"NO .log files found")
     return found_files
 
 
