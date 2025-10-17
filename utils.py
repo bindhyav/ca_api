@@ -254,9 +254,9 @@ def main():
     run_adb_commands()
     code = extract_device_code_from_xml()
     if code:
-        print(f"✅ Device login code found: {code}")
+        print(f"Device login code found: {code}")
     else:
-        print("❌ No valid device login code found.")
+        print("No valid device login code found.")
 
 if __name__ == "__main__":
     main()

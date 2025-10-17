@@ -10,12 +10,12 @@
     "expected_value": "PERIODIC"
   },
   {
-    "event":"BugReportStart",
+    "event":"Bort_BugReportStart",
     "key": "file",
     "expected_value": ".mar"
   },
   {
-    "event":"BugReportFinish",
+    "event":"Bort_BugReportFinish",
     "key": "file",
     "expected_value": ".mar"
   },
