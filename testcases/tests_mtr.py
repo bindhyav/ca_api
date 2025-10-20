@@ -1,7 +1,7 @@
 """ Test cases for TEAMS related testcases"""
 
 import time
-from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta, timezone
 import json
 import pytest
 import os
@@ -195,6 +195,7 @@ util.have_auth()
 #         pytest.fail(f"Event extraction failed: {e}")
 #         return
 
+
 def test_events_from_json_simple():
     """
     Reads events from event_file.json and searches them in analytics logs.
@@ -244,57 +245,60 @@ def test_events_from_json_simple():
                     except Exception:
                         details = {}
 
+                # Fetch the parameter value
                 parameter = item.get(key)
                 if not parameter:
                     parameter = details.get(key, "")
 
                 if not isinstance(parameter, str):
-                    parameters= str(parameter)
+                    parameter = str(parameter)
 
                 # --- Case 1: key == "file" -> check extensions from JSON ---
                 if key == "file":
                     # Ensure expected_value is a list
                     valid_extensions = expected_value if isinstance(expected_value, list) else [expected_value]
                     valid_extensions = [ext.lower().lstrip(".") for ext in valid_extensions]  # normalize
-                    filename_lower = parameters.lower()
+
+                    filename_lower = parameter.lower()
                     if any(filename_lower.endswith("." + ext) for ext in valid_extensions):
                         ts = item.get("timestamp")
                         when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"{event_name}: file '{parameters}' has valid extension at {when}")
+                        print(f"✓ {event_name}: file '{parameter}' has valid extension at {when}")
                         found.append(event_name)
                         pending.remove(entry)
+
                     else:
-                        print(f"{event_name}: file '{parameters}' does NOT have a valid extension {valid_extensions}")
+                        print(f"✗ {event_name}: file '{parameter}' does NOT have a valid extension {valid_extensions}")
                         continue
 
                 # --- Case 2: handle non-file keys ---
                 if isinstance(expected_value, str) and expected_value == "__not_empty__":
-                    if parameters.strip():
+                    if parameter.strip():
                         ts = item.get("timestamp")
                         when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"{event_name}: '{key}' is non-empty ('{parameters}') at {when}")
+                        print(f"✓ {event_name}: '{key}' is non-empty ('{parameter}') at {when}")
                         found.append(event_name)
                         pending.remove(entry)
 
                     else:
-                        print(f"{event_name}: '{key}' empty or missing (value={parameters!r})")
+                        print(f"✗ {event_name}: '{key}' empty or missing (value={parameter!r})")
                         continue
 
                 # Normal matching logic
                 if isinstance(expected_value, list):
-                    matched = any(str(v).lower() in parameters.lower() for v in expected_value)
+                    matched = any(str(v).lower() in parameter.lower() for v in expected_value)
                 else:
-                    matched = str(expected_value).lower() in parameters.lower()
+                    matched = str(expected_value).lower() in parameter.lower()
 
                 if matched:
                     ts = item.get("timestamp")
                     when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                    print(f"{event_name}: '{key}' contains expected '{expected_value}' at {when}")
+                    print(f"✓ {event_name}: '{key}' contains expected '{expected_value}' at {when}")
                     found.append(event_name)
                     pending.remove(entry)
 
                 else:
-                    print(f"{event_name}: candidate '{parameters}' does not match '{expected_value}'")
+                    print(f"✗ {event_name}: parameter '{parameter}' does not match '{expected_value}'")
 
         if pending:
             print(f"Waiting for: {[p['event'] for p in pending]}")
