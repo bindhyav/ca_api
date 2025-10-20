@@ -197,17 +197,9 @@ util.have_auth()
 
 def test_events_from_json_simple():
     """
-    Simple and generic test:
     Reads events from event_file.json and searches them in analytics logs.
-    Each JSON object must have: event, key, expected_value.
-    Example:
-    [
-      {"event": "Bort_LoggingMode", "key": "collectionMode", "expected_value": "CONTINUOUS"},
-      {"event": "Bort_BugReportStart", "key": "file", "expected_value": ".mar"},
-      {"event": "Bort_BugReportGenerateComplete", "key": "path", "expected_value": ".zip"}
-    ]
+    If key == "file", checks file extension from the list in JSON.
     """
-    # --- Auth setup ---
     if not util.have_auth():
         pytest.skip("Missing auth/cookie")
 
@@ -215,26 +207,19 @@ def test_events_from_json_simple():
     serial = util.get_selected_device()
     reboot_ist = ev.reboot_and_wait(serial)
 
-    # --- Define time window ---
     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
     print(f"Scanning logs from {from_iso} to {to_iso}")
 
-    # --- Load event list from JSON ---
     here = os.path.dirname(__file__)
     project_root = os.path.dirname(here)
     events_json = os.path.join(project_root, "event_file.json")
 
-    try:
-        with open(events_json, "r", encoding="utf-8") as f:
-            event_data = json.load(f)
-    except Exception as e:
-        pytest.skip(f"Cannot read event_file.json: {e}")
-        return
+    with open(events_json, "r", encoding="utf-8") as f:
+        event_data = json.load(f)
 
     print(f"Loaded {len(event_data)} events from JSON")
 
-    # --- Start polling ---
     deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
     pending = event_data.copy()
     found = []
@@ -244,16 +229,14 @@ def test_events_from_json_simple():
         print(f"Scanned {len(page)} events at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
 
         for entry in list(pending):
-            event_name = entry["event"]
-            key = entry["key"]
-            expected_value = entry["expected_value"]
+            event_name = entry.get("event")
+            key = entry.get("key")
+            expected_value = entry.get("expected_value")  # may be list or string
 
             for item in page:
-                # 1. Check if event name matches
                 if item.get("type") != event_name:
                     continue
 
-                # 2. Parse details (if string)
                 details = item.get("details", {})
                 if isinstance(details, str):
                     try:
@@ -261,61 +244,59 @@ def test_events_from_json_simple():
                     except Exception:
                         details = {}
 
-                # 3. Try fetching value from top-level or nested dict
-                top_val = item.get(key)
-                detail_val = ev._find_value_in_dict(details, key)
+                candidate = item.get(key)
+                if not candidate:
+                    candidate = details.get(key, "")
 
-                if top_val not in (None, ""):
-                    candidate = top_val
-                elif detail_val not in (None, ""):
-                    candidate = detail_val
-                else:
-                    raw_details_str = item.get("details", "")
-                    candidate = raw_details_str or ""
-
-                # Ensure candidate is a string for safe comparison
                 if not isinstance(candidate, str):
                     candidate = str(candidate)
 
-                # --- Special-case: check only for non-empty string marker ---
-                if isinstance(expected_value, str) and expected_value == "__not_empty__":
-                    if candidate.strip():
+                # --- Case 1: key == "file" -> check extensions from JSON ---
+                if key == "file":
+                    # Ensure expected_value is a list
+                    valid_extensions = expected_value if isinstance(expected_value, list) else [expected_value]
+                    valid_extensions = [ext.lower().lstrip(".") for ext in valid_extensions]  # normalize
+
+                    filename_lower = candidate.lower()
+                    if any(filename_lower.endswith("." + ext) for ext in valid_extensions):
                         ts = item.get("timestamp")
                         when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"✓ {event_name}: '{key}' is non-empty string ('{candidate}') at {when}")
+                        print(f"{event_name}: file '{candidate}' has valid extension at {when}")
                         found.append(event_name)
                         pending.remove(entry)
                         break
                     else:
-                        print(f"✗ {event_name}: '{key}' is empty or missing (value={candidate!r})")
-                        # continue searching other events (don't remove entry)
+                        print(f"{event_name}: file '{candidate}' does NOT have a valid extension {valid_extensions}")
                         continue
 
-                # 4. Normal compare: expected_value as substring (case-insensitive)
-                # If expected_value is a list, accept any one of them
-                matched = False
+                # --- Case 2: handle non-file keys ---
+                if isinstance(expected_value, str) and expected_value == "__not_empty__":
+                    if candidate.strip():
+                        ts = item.get("timestamp")
+                        when = ev.ts_ms_to_ist(ts) if ts else "unknown"
+                        print(f"{event_name}: '{key}' is non-empty ('{candidate}') at {when}")
+                        found.append(event_name)
+                        pending.remove(entry)
+                        break
+                    else:
+                        print(f"{event_name}: '{key}' empty or missing (value={candidate!r})")
+                        continue
+
+                # Normal matching logic
                 if isinstance(expected_value, list):
-                    for e in expected_value:
-                        if e and e.lower() in candidate.lower():
-                            matched = True
-                            break
+                    matched = any(str(v).lower() in candidate.lower() for v in expected_value)
                 else:
-                    # expected_value may be a string (normal case)
-                    if isinstance(expected_value, str) and expected_value.lower() in candidate.lower():
-                        matched = True
+                    matched = str(expected_value).lower() in candidate.lower()
 
                 if matched:
                     ts = item.get("timestamp")
                     when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                    print(f"✓ {event_name}: '{key}' contains expected value '{expected_value}' at {when}")
+                    print(f"{event_name}: '{key}' contains expected '{expected_value}' at {when}")
                     found.append(event_name)
                     pending.remove(entry)
                     break
                 else:
-                    print(
-                        f"✗ {event_name}: key '{key}' present but value '{candidate}' "
-                        f"does not contain '{expected_value}'"
-                    )
+                    print(f"{event_name}: candidate '{candidate}' does not match '{expected_value}'")
 
         if pending:
             print(f"Waiting for: {[p['event'] for p in pending]}")

@@ -11,13 +11,13 @@
   },
   {
     "event":"Bort_BugReportStart",
-    "key": "reportType",
-    "expected_value": "__not_empty__"
+    "key": "file",
+    "expected_value": [".mar",".zip",".tar"]
   },
   {
     "event":"Bort_BugReportFinish",
-    "key": "reportType",
-    "expected_value": "__not_empty__"
+    "key": "file",
+    "expected_value": [".mar",".zip",".tar"]
   },
   {
     "event": "Bort_BugReportGenerateComplete",
