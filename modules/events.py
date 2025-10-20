@@ -55,29 +55,30 @@ def iso_ist(dt: datetime) -> str:
 
 
 def get_device_type(headers: dict[str, str], serial: str) -> str:
-    """
-    Return deviceType for the given device serial using Analytics device endpoint.
-    """
-    url = f"{API_BASE}/device/{serial}"
-    r = requests.get(url, headers=headers, timeout=30)
-    try:
-        r.raise_for_status()
-    except requests.HTTPError:
-        msg = f"Failed to get device info for {serial}: {r.status_code} {r.reason}"
-        raise RuntimeError(f"get_device_type: {msg}\nResponse content: {r.text}")
-
-    data = r.json() if r.content else {}
-    # deviceType usually lives at top level; fallbacks included just in case
-    device_type=(
-        data.get("type")
-        or (data.get("metadata") or {}).get("deviceType")
-        or (data.get("device", {}) or {}).get("type")
-    )
-    if not device_type or not isinstance(device_type, str):
-        raise RuntimeError(f"get_device_type: deviceType not found in response: {data}")
-    device_type = device_type.strip()
-    return device_type
-
+    # """
+    # Return deviceType for the given device serial using Analytics device endpoint.
+    # """
+    # url = f"{API_BASE}/device/{serial}"
+    # r = requests.get(url, headers=headers, timeout=30)
+    # try:
+    #     r.raise_for_status()
+    # except requests.HTTPError:
+    #     msg = f"Failed to get device info for {serial}: {r.status_code} {r.reason}"
+    #     raise RuntimeError(f"get_device_type: {msg}\nResponse content: {r.text}")
+    #
+    # data = r.json() if r.content else {}
+    # # deviceType usually lives at top level; fallbacks included just in case
+    # device_type=(
+    #     data.get("type")
+    #     or (data.get("metadata") or {}).get("deviceType")
+    #     or (data.get("device", {}) or {}).get("type")
+    # )
+    # if not device_type or not isinstance(device_type, str):
+    #     raise RuntimeError(f"get_device_type: deviceType not found in response: {data}")
+    # device_type = device_type.strip()
+    # return device_type
+    device ="10.91.208.243:5555"
+    return device
 
 def reboot_and_wait(serial: str) -> datetime:
     """
@@ -165,7 +166,7 @@ def scan_window(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 2
     seen_first_ids = set()
     assert isinstance(PAGE_LIMIT, int) and PAGE_LIMIT > 0, "PAGE_LIMIT must be a positive int"
     for page in range(max_pages):
-        page = fetch_page(headers, from_iso, to_iso, offset)
+        page = (headers, from_iso, to_iso, offset)
         if not page:
             # empty page → nothing else to fetch
             return out
@@ -260,3 +261,26 @@ def _find_value_in_dict(d, key):
                 return found
     return None
 
+
+def get_diagnostics_logs(headers: dict, serial: str, from_iso: str, to_iso: str) -> list:
+    """
+    Go to Diagnostics page for the given device serial using Analytics API.
+    Fetches diagnostics logs within the given time window.
+    """
+    device_type = get_selected_device()
+    url = f"{API_BASE}/diagnostics/{serial}"
+    params = {
+        "deviceType": device_type,
+        "from": from_iso,
+        "to": to_iso,
+        "limit": 1000
+    }
+    r = requests.get(url, headers=headers, params=params, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected diagnostics response: {data}")
+    return data
+
+if __name__ == "__main__":
+   get_diagnostics_logs(serial="2411FD1LG0A2")
