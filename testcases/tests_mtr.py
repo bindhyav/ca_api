@@ -7,7 +7,7 @@ import pytest
 import os
 # from utils import get_auth_and_cookie
 from modules import events as ev
-from modules.extraction import dump_event_main, extract_edid_file
+# from modules.extraction import dump_event_main, extract_edid_file
 # from modules.version import get_collabos_version, get_collab_version_from_adb
 # from modules.mode import fetch_device_mode
 import utils as util
@@ -244,49 +244,47 @@ def test_events_from_json_simple():
                     except Exception:
                         details = {}
 
-                candidate = item.get(key)
-                if not candidate:
-                    candidate = details.get(key, "")
+                parameter = item.get(key)
+                if not parameter:
+                    parameter = details.get(key, "")
 
-                if not isinstance(candidate, str):
-                    candidate = str(candidate)
+                if not isinstance(parameter, str):
+                    parameters= str(parameter)
 
                 # --- Case 1: key == "file" -> check extensions from JSON ---
                 if key == "file":
                     # Ensure expected_value is a list
                     valid_extensions = expected_value if isinstance(expected_value, list) else [expected_value]
                     valid_extensions = [ext.lower().lstrip(".") for ext in valid_extensions]  # normalize
-
-                    filename_lower = candidate.lower()
+                    filename_lower = parameters.lower()
                     if any(filename_lower.endswith("." + ext) for ext in valid_extensions):
                         ts = item.get("timestamp")
                         when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"{event_name}: file '{candidate}' has valid extension at {when}")
+                        print(f"{event_name}: file '{parameters}' has valid extension at {when}")
                         found.append(event_name)
                         pending.remove(entry)
-                        break
                     else:
-                        print(f"{event_name}: file '{candidate}' does NOT have a valid extension {valid_extensions}")
+                        print(f"{event_name}: file '{parameters}' does NOT have a valid extension {valid_extensions}")
                         continue
 
                 # --- Case 2: handle non-file keys ---
                 if isinstance(expected_value, str) and expected_value == "__not_empty__":
-                    if candidate.strip():
+                    if parameters.strip():
                         ts = item.get("timestamp")
                         when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"{event_name}: '{key}' is non-empty ('{candidate}') at {when}")
+                        print(f"{event_name}: '{key}' is non-empty ('{parameters}') at {when}")
                         found.append(event_name)
                         pending.remove(entry)
-                        break
+
                     else:
-                        print(f"{event_name}: '{key}' empty or missing (value={candidate!r})")
+                        print(f"{event_name}: '{key}' empty or missing (value={parameters!r})")
                         continue
 
                 # Normal matching logic
                 if isinstance(expected_value, list):
-                    matched = any(str(v).lower() in candidate.lower() for v in expected_value)
+                    matched = any(str(v).lower() in parameters.lower() for v in expected_value)
                 else:
-                    matched = str(expected_value).lower() in candidate.lower()
+                    matched = str(expected_value).lower() in parameters.lower()
 
                 if matched:
                     ts = item.get("timestamp")
@@ -294,9 +292,9 @@ def test_events_from_json_simple():
                     print(f"{event_name}: '{key}' contains expected '{expected_value}' at {when}")
                     found.append(event_name)
                     pending.remove(entry)
-                    break
+
                 else:
-                    print(f"{event_name}: candidate '{candidate}' does not match '{expected_value}'")
+                    print(f"{event_name}: candidate '{parameters}' does not match '{expected_value}'")
 
         if pending:
             print(f"Waiting for: {[p['event'] for p in pending]}")
