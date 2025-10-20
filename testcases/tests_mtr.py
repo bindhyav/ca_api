@@ -235,6 +235,15 @@ def test_events_from_json_simple():
             expected_value = entry.get("expected_value")  # may be list or string
 
             for item in page:
+                # Defensive: ensure item is a dict (scan_window can return raw JSON strings)
+                if isinstance(item, str):
+                    try:
+                        item = json.loads(item)
+                    except Exception:
+                        # skip non-JSON items and continue with next page item
+                        print("Skipping non-JSON page item:", item)
+                        continue
+
                 if item.get("type") != event_name:
                     continue
 
@@ -266,7 +275,7 @@ def test_events_from_json_simple():
                         print(f"✓ {event_name}: file '{parameter}' has valid extension at {when}")
                         found.append(event_name)
                         pending.remove(entry)
-
+                        break
                     else:
                         print(f"✗ {event_name}: file '{parameter}' does NOT have a valid extension {valid_extensions}")
                         continue
@@ -279,7 +288,7 @@ def test_events_from_json_simple():
                         print(f"✓ {event_name}: '{key}' is non-empty ('{parameter}') at {when}")
                         found.append(event_name)
                         pending.remove(entry)
-
+                        break
                     else:
                         print(f"✗ {event_name}: '{key}' empty or missing (value={parameter!r})")
                         continue
@@ -296,7 +305,7 @@ def test_events_from_json_simple():
                     print(f"✓ {event_name}: '{key}' contains expected '{expected_value}' at {when}")
                     found.append(event_name)
                     pending.remove(entry)
-
+                    break
                 else:
                     print(f"✗ {event_name}: parameter '{parameter}' does not match '{expected_value}'")
 
