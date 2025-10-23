@@ -310,7 +310,7 @@ def test_events_from_json_simple():
                 if log_item.get("type") != event_name:
                     continue
                 possible_values= extract_possible_values(log_item, event_key)
-                matched_value=next(val for val in possible_values if is_match(val, expected_patterns))
+                matched_value=next((val for val in possible_values if is_match(val, expected_patterns)),None)
                 if matched_value:
                     print(f"Matched event '{event_name}' key '{event_key}' with value '{matched_value}'")
                     found_events.append(event_name)
