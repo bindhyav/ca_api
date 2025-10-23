@@ -197,12 +197,14 @@ util.have_auth()
 
 def test_events_from_json_simple():
     """
-    Simplified test:
-    - Reads event_file.json.
-    - For each event, searches in logs for the given 'key' field (e.g., file or path).
-    - Passes if the field value ends with any extension in expected_value (e.g., .zip, .tar, .mar).
-    - Only checks what's in JSON; no extra conditions.
+    Strict matcher:
+    - Reads event_file.json and for each entry checks exactly the 'key' you specified.
+    - If key is 'file' or 'path': check file extension(s) from expected_value (e.g. .zip, .tar, .mar).
+    - Otherwise: compare the field value (case-insensitive) to expected_value (string or list).
     """
+    import os, json, time
+    from datetime import datetime, timedelta
+
     if not util.have_auth():
         pytest.skip("Missing auth/cookie")
 
@@ -212,13 +214,13 @@ def test_events_from_json_simple():
 
     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
-    here = os.path.dirname(__file__)
-    events_json = os.path.join(os.path.dirname(here), "event_file.json")
+    events_json = os.path.join(os.path.dirname(__file__), "..", "event_file.json")
+    events_json = os.path.normpath(events_json)
 
     with open(events_json, "r", encoding="utf-8") as f:
         event_data = json.load(f)
 
-    pending = [dict(e) for e in event_data]
+    pending = [dict(e) for e in event_data]  # working copy
     found = []
     deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
 
@@ -227,13 +229,13 @@ def test_events_from_json_simple():
         print(f"Scanned {len(page)} events")
 
         for entry in list(pending):
-            event_name = entry["event"]
-            key = entry["key"]
-            expected = entry["expected_value"]
-            matched = False
+            event_name = entry.get("event")
+            key = entry.get("key")
+            expected = entry.get("expected_value")
+            matched_entry = False
 
             for raw_item in page:
-                # Ensure dict format
+                # normalize to dict
                 item = raw_item
                 if isinstance(raw_item, str):
                     try:
@@ -243,14 +245,14 @@ def test_events_from_json_simple():
                 if not isinstance(item, dict):
                     continue
 
-                # Match event type
+                # event must match
                 if item.get("type") != event_name:
                     continue
 
-                # Get field value (top or inside details)
+                # fetch exact key: top-level then details (if details is JSON string or dict)
                 value = ""
-                if key in item and item[key]:
-                    value = str(item[key])
+                if key in item and item.get(key) not in (None, ""):
+                    value = str(item.get(key))
                 else:
                     details = item.get("details", {})
                     if isinstance(details, str):
@@ -258,40 +260,55 @@ def test_events_from_json_simple():
                             details = json.loads(details)
                         except Exception:
                             details = {}
-                    if isinstance(details, dict) and key in details:
-                        value = str(details[key])
+                    if isinstance(details, dict) and key in details and details.get(key) not in (None, ""):
+                        value = str(details.get(key))
 
                 if not value:
-                    continue  # skip if field not present
+                    # field not present in this event
+                    continue
 
-                # Extract filename and extension
-                filename = os.path.basename(value.split("?",maxsplit=1)[0])
-                _, ext = os.path.splitext(filename)
-                ext = ext.lower().lstrip(".")
+                # If key indicates a file/path -> check extension(s)
+                if key.lower() in ("file", "path"):
+                    # remove query string, take basename, extract extension
+                    fname = os.path.basename(value.split("?", maxsplit=1)[0])
+                    _, ext = os.path.splitext(fname)
+                    ext_norm = ext.lower().lstrip(".")
 
-                # Normalize expected extensions
-                valid_extension = expected if isinstance(expected, list) else [expected]
-                valid_extension = [str(e).lower().lstrip(".") for e in valid_extension]
+                    # normalize expected extensions
+                    expected_list = expected if isinstance(expected, list) else [expected]
+                    expected_exts = [str(x).lower().lstrip(".") for x in expected_list if x]
 
-                # Match extension
-                if ext in valid_extension:
-                    print(f"[{event_name}] Found valid {key}: '{filename}' (.{ext})")
+                    if ext_norm and ext_norm in expected_exts:
+                        print(f"✓ [{event_name}] {key}='{fname}' extension '.{ext_norm}' matched {expected_exts}")
+                        found.append(event_name)
+                        pending.remove(entry)
+                        matched_entry = True
+                        break
+                    else:
+                        print(f"✗ [{event_name}] {key}='{fname}' ext '.{ext_norm}' not in {expected_exts}")
+                        continue
+
+                # Otherwise treat as plain value (case-insensitive exact match)
+                expected_vals = expected if isinstance(expected, list) else [expected]
+                expected_vals_norm = [str(x).lower() for x in expected_vals]
+
+                if value.lower() in expected_vals_norm:
+                    print(f"✓ [{event_name}] {key}='{value}' matched expected {expected_vals_norm}")
                     found.append(event_name)
                     pending.remove(entry)
-                    matched = True
-
+                    matched_entry = True
+                    break
                 else:
-                    print(f"[{event_name}] {key}='{filename}' invalid ext '.{ext}', expected {valid_extension}")
+                    print(f"✗ [{event_name}] {key}='{value}' != expected {expected_vals_norm}")
 
-            if matched:
+            if matched_entry:
                 continue
 
         if pending:
-            print(f"Waiting for: {[p['event'] for p in pending]}")
+            print("Waiting for:", [p["event"] for p in pending])
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
 
     print("\n===== Summary =====")
     print(f"Found: {found}")
     print(f"Missing: {[p['event'] for p in pending]}")
     assert not pending, f"Missing or invalid events: {[p['event'] for p in pending]}"
-
