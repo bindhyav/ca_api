@@ -154,7 +154,7 @@ def extract_edid_file():
     return edid_file_path
 
 def find_edid_file(root_dir):
-    print(f"Searching for edid files in ...")
+    print(f"Searching for edid files in")
     found_files = []
     for dirpath, _, files in os.walk(root_dir):
         for file in files:

@@ -208,7 +208,7 @@ def test_events_from_json_simple():
     # --- Define time window ---
     from_time = ev.iso_ist(reboot_time - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_time = ev.iso_ist(reboot_time + timedelta(minutes=ev.POST_REBOOT_MIN))
-
+    print(f"Fixed window (IST): {from_time} to {to_time}")
     # --- Load JSON event list ---
     events_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "event_file.json")
     try:
