@@ -195,11 +195,13 @@ util.have_auth()
 #         pytest.fail(f"Event extraction failed: {e}")
 #         return
 
-
 def test_events_from_json_simple():
     """
-    Reads events from event_file.json and searches them in analytics logs.
-    If key == "file", checks file extension from the list in JSON.
+    Simplified test:
+    - Reads event_file.json.
+    - For each event, searches in logs for the given 'key' field (e.g., file or path).
+    - Passes if the field value ends with any extension in expected_value (e.g., .zip, .tar, .mar).
+    - Only checks what's in JSON; no extra conditions.
     """
     if not util.have_auth():
         pytest.skip("Missing auth/cookie")
@@ -210,104 +212,79 @@ def test_events_from_json_simple():
 
     from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
     to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
-    print(f"Scanning logs from {from_iso} to {to_iso}")
-
     here = os.path.dirname(__file__)
-    project_root = os.path.dirname(here)
-    events_json = os.path.join(project_root, "event_file.json")
+    events_json = os.path.join(os.path.dirname(here), "event_file.json")
 
     with open(events_json, "r", encoding="utf-8") as f:
         event_data = json.load(f)
 
-    print(f"Loaded {len(event_data)} events from JSON")
-
-    deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
-    pending = event_data.copy()
+    pending = [dict(e) for e in event_data]
     found = []
+    deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
 
     while datetime.now(ev.IST) < deadline and pending:
         page = ev.scan_window(headers, from_iso, to_iso)
-        print(f"Scanned {len(page)} events at {datetime.now(ev.IST).strftime('%H:%M:%S')}")
+        print(f"Scanned {len(page)} events")
 
         for entry in list(pending):
-            event_name = entry.get("event")
-            key = entry.get("key")
-            expected_value = entry.get("expected_value")  # may be list or string
+            event_name = entry["event"]
+            key = entry["key"]
+            expected = entry["expected_value"]
+            matched = False
 
-            for item in page:
-                # Defensive: ensure item is a dict (scan_window can return raw JSON strings)
-                if isinstance(item, str):
+            for raw_item in page:
+                # Ensure dict format
+                item = raw_item
+                if isinstance(raw_item, str):
                     try:
-                        item = json.loads(item)
+                        item = json.loads(raw_item)
                     except Exception:
-                        # skip non-JSON items and continue with next page item
-                        print("Skipping non-JSON page item:", item)
                         continue
+                if not isinstance(item, dict):
+                    continue
 
+                # Match event type
                 if item.get("type") != event_name:
                     continue
 
-                details = item.get("details", {})
-                if isinstance(details, str):
-                    try:
-                        details = json.loads(details)
-                    except Exception:
-                        details = {}
-
-                # Fetch the parameter value
-                parameter = item.get(key)
-                if not parameter:
-                    parameter = details.get(key, "")
-
-                if not isinstance(parameter, str):
-                    parameter = str(parameter)
-
-                # --- Case 1: key == "file" -> check extensions from JSON ---
-                if key == "file":
-                    # Ensure expected_value is a list
-                    valid_extensions = expected_value if isinstance(expected_value, list) else [expected_value]
-                    valid_extensions = [ext.lower().lstrip(".") for ext in valid_extensions]  # normalize
-
-                    filename_lower = parameter.lower()
-                    if any(filename_lower.endswith("." + ext) for ext in valid_extensions):
-                        ts = item.get("timestamp")
-                        when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"✓ {event_name}: file '{parameter}' has valid extension at {when}")
-                        found.append(event_name)
-                        pending.remove(entry)
-                        break
-                    else:
-                        print(f"✗ {event_name}: file '{parameter}' does NOT have a valid extension {valid_extensions}")
-                        continue
-
-                # --- Case 2: handle non-file keys ---
-                if isinstance(expected_value, str) and expected_value == "__not_empty__":
-                    if parameter.strip():
-                        ts = item.get("timestamp")
-                        when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                        print(f"✓ {event_name}: '{key}' is non-empty ('{parameter}') at {when}")
-                        found.append(event_name)
-                        pending.remove(entry)
-                        break
-                    else:
-                        print(f"✗ {event_name}: '{key}' empty or missing (value={parameter!r})")
-                        continue
-
-                # Normal matching logic
-                if isinstance(expected_value, list):
-                    matched = any(str(v).lower() in parameter.lower() for v in expected_value)
+                # Get field value (top or inside details)
+                value = ""
+                if key in item and item[key]:
+                    value = str(item[key])
                 else:
-                    matched = str(expected_value).lower() in parameter.lower()
+                    details = item.get("details", {})
+                    if isinstance(details, str):
+                        try:
+                            details = json.loads(details)
+                        except Exception:
+                            details = {}
+                    if isinstance(details, dict) and key in details:
+                        value = str(details[key])
 
-                if matched:
-                    ts = item.get("timestamp")
-                    when = ev.ts_ms_to_ist(ts) if ts else "unknown"
-                    print(f"✓ {event_name}: '{key}' contains expected '{expected_value}' at {when}")
+                if not value:
+                    continue  # skip if field not present
+
+                # Extract filename and extension
+                filename = os.path.basename(value.split("?",maxsplit=1)[0])
+                _, ext = os.path.splitext(filename)
+                ext = ext.lower().lstrip(".")
+
+                # Normalize expected extensions
+                valid_extension = expected if isinstance(expected, list) else [expected]
+                valid_extension = [str(e).lower().lstrip(".") for e in valid_extension]
+
+                # Match extension
+                if ext in valid_extension:
+                    print(f"[{event_name}] Found valid {key}: '{filename}' (.{ext})")
                     found.append(event_name)
                     pending.remove(entry)
-                    break
+                    matched = True
+
                 else:
-                    print(f"✗ {event_name}: parameter '{parameter}' does not match '{expected_value}'")
+                    print(f"[{event_name}] {key}='{filename}' invalid ext '.{ext}', expected {valid_extension}")
+
+            if matched:
+                continue
 
         if pending:
             print(f"Waiting for: {[p['event'] for p in pending]}")
@@ -316,4 +293,5 @@ def test_events_from_json_simple():
     print("\n===== Summary =====")
     print(f"Found: {found}")
     print(f"Missing: {[p['event'] for p in pending]}")
-    assert not pending, f"Missing or unmatched events: {[p['event'] for p in pending]}"
+    assert not pending, f"Missing or invalid events: {[p['event'] for p in pending]}"
+

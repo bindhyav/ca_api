@@ -168,6 +168,7 @@ def scan_window(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 2
     for page in range(max_pages):
         page = fetch_page(headers, from_iso, to_iso, offset)
 
+
         if not page:
             # empty page → nothing else to fetch
             return out
@@ -283,3 +284,45 @@ def get_diagnostics_logs(headers: dict, serial: str, from_iso: str, to_iso: str)
         raise RuntimeError(f"Unexpected diagnostics response: {data}")
     return data
 
+
+def scan_windows(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 2000) -> list:
+    """
+    Scans and retrieves paginated data from an API within a specified time window.
+    Args:
+        headers (dict): HTTP headers to include in the API request.
+        from_iso (str): ISO 8601 formatted start timestamp for the data window.
+        to_iso (str): ISO 8601 formatted end timestamp for the data window.
+        max_pages (int, optional): Maximum number of pages to fetch before aborting. Defaults to 2000.
+    Returns:
+        list: A list of all items retrieved across pages within the specified time window.
+    Raises:
+        AssertionError: If PAGE_LIMIT is not a positive integer.
+        RuntimeError: If pagination appears to be broken (e.g., same page repeating or max_pages exceeded).
+    Notes:
+        - Uses an `offset`-based pagination strategy.
+        - Detects and prevents infinite loops by checking for repeated first item IDs.
+        - Stops fetching when an empty page is returned or the last page has fewer items than PAGE_LIMIT.
+    """
+    out, offset = [], 0
+    seen_first_ids = set()
+    assert isinstance(PAGE_LIMIT, int) and PAGE_LIMIT > 0, "PAGE_LIMIT must be a positive int"
+    for page in range(max_pages):
+        page = get_diagnostics_logs(headers, from_iso, to_iso, offset)
+
+        if not page:
+            # empty page → nothing else to fetch
+            return out
+        # Detect if the same page is being returned repeatedly
+        first_id = page[0].get("id") if isinstance(page[0], dict) else None
+        if first_id is not None:
+            if first_id in seen_first_ids:
+                raise RuntimeError(
+                    f"Pagination stuck: same first item id {first_id} is repeating. "
+                    f"This usually means the API ignores 'offset' or expects a different param."
+                )
+            seen_first_ids.add(first_id)
+        out.extend(page)
+        if len(page) < PAGE_LIMIT:
+            return out
+        offset += PAGE_LIMIT
+    raise RuntimeError("Aborting after max_pages – pagination likely broken.")
