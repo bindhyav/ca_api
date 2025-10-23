@@ -1,13 +1,9 @@
 """ Test cases for TEAMS related testcases"""
 
-import time
-from datetime import datetime, timedelta, timezone
-import json
-import pytest
-import os
-import json, time, fnmatch, os
-from pathlib import PurePath
 
+from datetime import datetime, timedelta, timezone
+import pytest
+import json, time, os
 # from utils import get_auth_and_cookie
 from modules import events as ev
 # from modules.extraction import dump_event_main, extract_edid_file
@@ -222,78 +218,78 @@ def test_events_from_json_simple():
         pytest.skip(f"Cannot read event_file.json: {error}")
 
     # --- Helper: normalize expected value ---
-    def normalize_expected_value(expected_value):
-        """Convert expected value to lowercase list."""
-        if isinstance(expected_value, list):
-            return [str(value).lower() for value in expected_value]
-        return [str(expected_value).lower()]
+    # def normalize_expected_value(expected_value):
+    #     """Convert expected value to lowercase list."""
+    #     if isinstance(expected_value, list):
+    #         return [str(value).lower() for value in expected_value]
+    #     return [str(expected_value).lower()]
 
     # --- Helper: extract all possible values from event ---
-    def extract_possible_values(log_item, key_name):
-        possible_values = []
-
-        # 1. Direct key from log item
-        value = log_item.get(key_name)
-        if value is not None:
-            if isinstance(value, (list, tuple)):
-                possible_values.extend(map(str, value))
-            elif isinstance(value, dict):
-                possible_values.extend(map(str, value.values()))
-            else:
-                possible_values.append(str(value))
-
-        # 2. Parse 'details' section
-        details = log_item.get("details")
-        if isinstance(details, str):
-            try:
-                details = json.loads(details)
-            except Exception:
-                possible_values.append(details)
-                details = None
-
-        if isinstance(details, dict):
-            # Specific key match
-            if key_name in details:
-                val = details[key_name]
-                if isinstance(val, (list, tuple)):
-                    possible_values.extend(map(str, val))
-                else:
-                    possible_values.append(str(val))
-            # Add all other values
-            for val in details.values():
-                if isinstance(val, (list, tuple)):
-                    possible_values.extend(map(str, val))
-                else:
-                    possible_values.append(str(val))
-        elif isinstance(details, (list, tuple)):
-            possible_values.extend(map(str, details))
-
-        # Remove duplicates and empty strings
-        unique_values = [v.strip() for v in dict.fromkeys(possible_values) if v.strip()]
-        return unique_values
+    # def extract_possible_values(log_item, key_name):
+    #     possible_values = []
+    #
+    #     # 1. Direct key from log item
+    #     value = log_item.get(key_name)
+    #     if value is not None:
+    #         if isinstance(value, (list, tuple)):
+    #             possible_values.extend(map(str, value))
+    #         elif isinstance(value, dict):
+    #             possible_values.extend(map(str, value.values()))
+    #         else:
+    #             possible_values.append(str(value))
+    #
+    #     # 2. Parse 'details' section
+    #     details = log_item.get("details")
+    #     if isinstance(details, str):
+    #         try:
+    #             details = json.loads(details)
+    #         except Exception:
+    #             possible_values.append(details)
+    #             details = None
+    #
+    #     if isinstance(details, dict):
+    #         # Specific key match
+    #         if key_name in details:
+    #             val = details[key_name]
+    #             if isinstance(val, (list, tuple)):
+    #                 possible_values.extend(map(str, val))
+    #             else:
+    #                 possible_values.append(str(val))
+    #         # Add all other values
+    #         for val in details.values():
+    #             if isinstance(val, (list, tuple)):
+    #                 possible_values.extend(map(str, val))
+    #             else:
+    #                 possible_values.append(str(val))
+    #     elif isinstance(details, (list, tuple)):
+    #         possible_values.extend(map(str, details))
+    #
+    #     # Remove duplicates and empty strings
+    #     unique_values = [v.strip() for v in dict.fromkeys(possible_values) if v.strip()]
+    #     return unique_values
 
     # --- Helper: pattern matching logic ---
-    def is_match(value, expected_patterns):
-        value = str(value).lower()
-        try:
-            path = PurePath(value)
-            file_name = path.name.lower()
-            extension = path.suffix.lower()
-        except Exception:
-            file_name, extension = value, ""
-
-        for pattern in expected_patterns:
-            if not pattern:
-                continue
-            if pattern in value or pattern in file_name:
-                return True
-            if pattern.startswith("*.") and extension == pattern[1:]:
-                return True
-            if pattern.startswith(".") and extension == pattern:
-                return True
-            if fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(file_name, pattern):
-                return True
-        return False
+    # def is_match(value, expected_patterns):
+    #     value = str(value).lower()
+    #     try:
+    #         path = PurePath(value)
+    #         file_name = path.name.lower()
+    #         extension = path.suffix.lower()
+    #     except Exception:
+    #         file_name, extension = value, ""
+    #
+    #     for pattern in expected_patterns:
+    #         if not pattern:
+    #             continue
+    #         if pattern in value or pattern in file_name:
+    #             return True
+    #         if pattern.startswith("*.") and extension == pattern[1:]:
+    #             return True
+    #         if pattern.startswith(".") and extension == pattern:
+    #             return True
+    #         if fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(file_name, pattern):
+    #             return True
+    #     return False
 
     # --- Poll and check events ---
     pending_events = [dict(event) for event in json_events]
@@ -305,12 +301,12 @@ def test_events_from_json_simple():
         for event_entry in list(pending_events):
             event_name = event_entry.get("event")
             event_key = event_entry.get("key")
-            expected_patterns = normalize_expected_value(event_entry.get("expected_value"))
+            expected_patterns = ev.normalize_expected_value(event_entry.get("expected_value"))
             for log_item in logs:
                 if log_item.get("type") != event_name:
                     continue
-                possible_values= extract_possible_values(log_item, event_key)
-                matched_value=next((val for val in possible_values if is_match(val, expected_patterns)),None)
+                possible_values= ev.extract_possible_values(log_item, event_key)
+                matched_value=next((val for val in possible_values if ev.is_match(val, expected_patterns)),None)
                 if matched_value:
                     print(f"Matched event '{event_name}' key '{event_key}' with value '{matched_value}'")
                     found_events.append(event_name)

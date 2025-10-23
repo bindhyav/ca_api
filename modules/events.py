@@ -24,7 +24,8 @@ Usage
     python -u generate_download.py
 """
 
-import time, subprocess, requests
+import time, subprocess, requests,fnmatch, json
+from pathlib import PurePath
 from datetime import datetime, timedelta, timezone
 from utils import get_serial_number, get_selected_device, adb
 
@@ -262,6 +263,74 @@ def _find_value_in_dict(d, key):
             if found is not None:
                 return found
     return None
+
+def normalize_expected_value(expected_value):
+    """Convert expected value to lowercase list."""
+    if isinstance(expected_value, list):
+        return [str(value).lower() for value in expected_value]
+    return [str(expected_value).lower()]
+
+def extract_possible_values(log_item, key_name):
+    possible_values = []
+    # 1. Direct key from log item
+    value = log_item.get(key_name)
+    if value is not None:
+        if isinstance(value, (list, tuple)):
+            possible_values.extend(map(str, value))
+        elif isinstance(value, dict):
+            possible_values.extend(map(str, value.values()))
+        else:
+            possible_values.append(str(value))
+    # 2. Parse 'details' section
+    details = log_item.get("details")
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except Exception:
+            possible_values.append(details)
+            details = None
+    if isinstance(details, dict):
+        # Specific key match
+        if key_name in details:
+            val = details[key_name]
+            if isinstance(val, (list, tuple)):
+                possible_values.extend(map(str, val))
+            else:
+                possible_values.append(str(val))
+            # Add all other values
+        for val in details.values():
+            if isinstance(val, (list, tuple)):
+                possible_values.extend(map(str, val))
+            else:
+                possible_values.append(str(val))
+    elif isinstance(details, (list, tuple)):
+        possible_values.extend(map(str, details))
+
+        # Remove duplicates and empty strings
+    unique_values = [v.strip() for v in dict.fromkeys(possible_values) if v.strip()]
+    return unique_values
+
+def is_match(value, expected_patterns):
+    value = str(value).lower()
+    try:
+        path = PurePath(value)
+        file_name = path.name.lower()
+        extension = path.suffix.lower()
+    except Exception:
+        file_name, extension = value, ""
+
+    for pattern in expected_patterns:
+        if not pattern:
+            continue
+        if pattern in value or pattern in file_name:
+            return True
+        if pattern.startswith("*.") and extension == pattern[1:]:
+            return True
+        if pattern.startswith(".") and extension == pattern:
+            return True
+        if fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(file_name, pattern):
+            return True
+    return False
 
 
 def get_diagnostics_logs(headers: dict, serial: str, from_iso: str, to_iso: str) -> list:
