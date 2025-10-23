@@ -297,6 +297,7 @@ def test_events_from_json_simple():
 
     # --- Poll and check events ---
     pending_events = [dict(event) for event in json_events]
+    found_events = []
     deadline = time.time() + ev.POLL_TIMEOUT_MIN * 60
 
     while pending_events and time.time() < deadline:
@@ -309,9 +310,16 @@ def test_events_from_json_simple():
                 if log_item.get("type") != event_name:
                     continue
                 possible_values= extract_possible_values(log_item, event_key)
-                if any(is_match(val, expected_patterns) for val in possible_values):
+                matched_value=next(val for val in possible_values if is_match(val, expected_patterns))
+                if matched_value:
+                    print(f"Matched event '{event_name}' key '{event_key}' with value '{matched_value}'")
+                    found_events.append(event_name)
                     pending_events.remove(event_entry)
                     break
         if pending_events:
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
+    print(f"Found events: {found_events}")
+    print(f"Pending events: {pending_events}")
     assert not pending_events, f"Events not found: {pending_events}"
+
+
