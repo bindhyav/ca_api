@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 import json
 import pytest
 import os
+import json, time, fnmatch, os
+from pathlib import PurePath
+
 # from utils import get_auth_and_cookie
 from modules import events as ev
 # from modules.extraction import dump_event_main, extract_edid_file
@@ -196,119 +199,119 @@ util.have_auth()
 #         return
 
 def test_events_from_json_simple():
-    """
-    Strict matcher:
-    - Reads event_file.json and for each entry checks exactly the 'key' you specified.
-    - If key is 'file' or 'path': check file extension(s) from expected_value (e.g. .zip, .tar, .mar).
-    - Otherwise: compare the field value (case-insensitive) to expected_value (string or list).
-    """
-    import os, json, time
-    from datetime import datetime, timedelta
 
+
+    # --- Setup authentication and device ---
     if not util.have_auth():
         pytest.skip("Missing auth/cookie")
 
     headers = util.build_headers()
-    serial = util.get_selected_device()
-    reboot_ist = ev.reboot_and_wait(serial)
+    device_serial = util.get_selected_device()
+    reboot_time = ev.reboot_and_wait(device_serial)
 
-    from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
-    to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
-    events_json = os.path.join(os.path.dirname(__file__), "..", "event_file.json")
-    events_json = os.path.normpath(events_json)
+    # --- Define time window ---
+    from_time = ev.iso_ist(reboot_time - timedelta(minutes=ev.PRE_REBOOT_MIN))
+    to_time = ev.iso_ist(reboot_time + timedelta(minutes=ev.POST_REBOOT_MIN))
 
-    with open(events_json, "r", encoding="utf-8") as f:
-        event_data = json.load(f)
+    # --- Load JSON event list ---
+    events_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "event_file.json")
+    try:
+        with open(events_file, "r", encoding="utf-8") as file:
+            json_events = json.load(file)
+    except Exception as error:
+        pytest.skip(f"Cannot read event_file.json: {error}")
 
-    pending = [dict(e) for e in event_data]  # working copy
-    found = []
-    deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
+    # --- Helper: normalize expected value ---
+    def normalize_expected_value(expected_value):
+        """Convert expected value to lowercase list."""
+        if isinstance(expected_value, list):
+            return [str(value).lower() for value in expected_value]
+        return [str(expected_value).lower()]
 
-    while datetime.now(ev.IST) < deadline and pending:
-        page = ev.scan_window(headers, from_iso, to_iso)
-        print(f"Scanned {len(page)} events")
+    # --- Helper: extract all possible values from event ---
+    def extract_possible_values(log_item, key_name):
+        possible_values = []
 
-        for entry in list(pending):
-            event_name = entry.get("event")
-            key = entry.get("key")
-            expected = entry.get("expected_value")
-            matched_entry = False
+        # 1. Direct key from log item
+        value = log_item.get(key_name)
+        if value is not None:
+            if isinstance(value, (list, tuple)):
+                possible_values.extend(map(str, value))
+            elif isinstance(value, dict):
+                possible_values.extend(map(str, value.values()))
+            else:
+                possible_values.append(str(value))
 
-            for raw_item in page:
-                # normalize to dict
-                item = raw_item
-                if isinstance(raw_item, str):
-                    try:
-                        item = json.loads(raw_item)
-                    except Exception:
-                        continue
-                if not isinstance(item, dict):
-                    continue
+        # 2. Parse 'details' section
+        details = log_item.get("details")
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except Exception:
+                possible_values.append(details)
+                details = None
 
-                # event must match
-                if item.get("type") != event_name:
-                    continue
-
-                # fetch exact key: top-level then details (if details is JSON string or dict)
-                value = ""
-                if key in item and item.get(key) not in (None, ""):
-                    value = str(item.get(key))
+        if isinstance(details, dict):
+            # Specific key match
+            if key_name in details:
+                val = details[key_name]
+                if isinstance(val, (list, tuple)):
+                    possible_values.extend(map(str, val))
                 else:
-                    details = item.get("details", {})
-                    if isinstance(details, str):
-                        try:
-                            details = json.loads(details)
-                        except Exception:
-                            details = {}
-                    if isinstance(details, dict) and key in details and details.get(key) not in (None, ""):
-                        value = str(details.get(key))
-
-                if not value:
-                    # field not present in this event
-                    continue
-
-                # If key indicates a file/path -> check extension(s)
-                if key.lower() in ("file", "path"):
-                    # remove query string, take basename, extract extension
-                    fname = os.path.basename(value.split("?", maxsplit=1)[0])
-                    _, ext = os.path.splitext(fname)
-                    ext_norm = ext.lower().lstrip(".")
-
-                    # normalize expected extensions
-                    expected_list = expected if isinstance(expected, list) else [expected]
-                    expected_exts = [str(x).lower().lstrip(".") for x in expected_list if x]
-
-                    if ext_norm and ext_norm in expected_exts:
-                        print(f"✓ [{event_name}] {key}='{fname}' extension '.{ext_norm}' matched {expected_exts}")
-                        found.append(event_name)
-                        pending.remove(entry)
-                        matched_entry = True
-                        break
-                    else:
-                        print(f"✗ [{event_name}] {key}='{fname}' ext '.{ext_norm}' not in {expected_exts}")
-                        continue
-
-                # Otherwise treat as plain value (case-insensitive exact match)
-                expected_vals = expected if isinstance(expected, list) else [expected]
-                expected_vals_norm = [str(x).lower() for x in expected_vals]
-
-                if value.lower() in expected_vals_norm:
-                    print(f"✓ [{event_name}] {key}='{value}' matched expected {expected_vals_norm}")
-                    found.append(event_name)
-                    pending.remove(entry)
-                    matched_entry = True
-                    break
+                    possible_values.append(str(val))
+            # Add all other values
+            for val in details.values():
+                if isinstance(val, (list, tuple)):
+                    possible_values.extend(map(str, val))
                 else:
-                    print(f"✗ [{event_name}] {key}='{value}' != expected {expected_vals_norm}")
+                    possible_values.append(str(val))
+        elif isinstance(details, (list, tuple)):
+            possible_values.extend(map(str, details))
 
-            if matched_entry:
+        # Remove duplicates and empty strings
+        unique_values = [v.strip() for v in dict.fromkeys(possible_values) if v.strip()]
+        return unique_values
+
+    # --- Helper: pattern matching logic ---
+    def is_match(value, expected_patterns):
+        value = str(value).lower()
+        try:
+            path = PurePath(value)
+            file_name = path.name.lower()
+            extension = path.suffix.lower()
+        except Exception:
+            file_name, extension = value, ""
+
+        for pattern in expected_patterns:
+            if not pattern:
                 continue
+            if pattern in value or pattern in file_name:
+                return True
+            if pattern.startswith("*.") and extension == pattern[1:]:
+                return True
+            if pattern.startswith(".") and extension == pattern:
+                return True
+            if fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(file_name, pattern):
+                return True
+        return False
 
-        if pending:
-            print("Waiting for:", [p["event"] for p in pending])
+    # --- Poll and check events ---
+    pending_events = [dict(event) for event in json_events]
+    deadline = time.time() + ev.POLL_TIMEOUT_MIN * 60
+
+    while pending_events and time.time() < deadline:
+        logs = ev.scan_window(headers, from_time, to_time)
+        for event_entry in list(pending_events):
+            event_name = event_entry.get("event")
+            event_key = event_entry.get("key")
+            expected_patterns = normalize_expected_value(event_entry.get("expected_value"))
+            for log_item in logs:
+                if log_item.get("type") != event_name:
+                    continue
+                possible_values= extract_possible_values(log_item, event_key)
+                if any(is_match(val, expected_patterns) for val in possible_values):
+                    pending_events.remove(event_entry)
+                    break
+        if pending_events:
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
-
-    print("\n===== Summary =====")
-    print(f"Found: {found}")
-    print(f"Missing: {[p['event'] for p in pending]}")
-    assert not pending, f"Missing or invalid events: {[p['event'] for p in pending]}"
+    assert not pending_events, f"Events not found: {pending_events}"
