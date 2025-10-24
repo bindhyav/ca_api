@@ -24,9 +24,10 @@ Usage
     python -u generate_download.py
 """
 
-import time, subprocess, requests,fnmatch, json
+import time, subprocess,fnmatch,json
 from pathlib import PurePath
 from datetime import datetime, timedelta, timezone
+import requests
 from utils import get_serial_number, get_selected_device, adb
 
 # ---------- Config ----------
@@ -361,20 +362,33 @@ def is_match(value, expected_patterns):
     return False
 
 
-def get_diagnostics_logs(headers: dict, from_iso: str, to_iso: str,offset : int) -> list:
+def get_diagnostics_logs(headers: dict, from_iso: str, to_iso: str,offset : int,report_tag = None) -> list:
     """
     Go to Diagnostics page for the given device serial using Analytics API.
     Fetches diagnostics logs within the given time window.
     """
+    def to_utc_z(iso_str: str) -> str:
+        try:
+            dt = datetime.fromisoformat(iso_str)
+            return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except Exception:
+            return iso_str
+    from_z = to_utc_z(from_iso)
+    to_z = to_utc_z(to_iso)
     url = f"{API_BASE}/diagnostics/{DEVICE_ID}"
     device_type = get_device_type(headers,DEVICE_ID)
     params = {
         "deviceType": device_type,
-        "from": from_iso,
-        "to": to_iso,
+        "from": from_z,
+        "to": to_z,
         "limit": PAGE_LIMIT,
         "offset": offset,
     }
+    if report_tag:
+        params["reportTag"] = report_tag
+    print(f"Fetching diagnostics logs with params: {params}")
+    print(f"Request URL: {url}")
+
     r = requests.get(url, headers=headers, params=params, timeout=30)
     r.raise_for_status()
     data = r.json()
@@ -383,7 +397,7 @@ def get_diagnostics_logs(headers: dict, from_iso: str, to_iso: str,offset : int)
     return data
 
 
-def scan_windows(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 2000) -> list:
+def scan_windows(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 2000,report_tag :str | None = None) -> list:
     """
     Scans and retrieves paginated data from an API within a specified time window.
     Args:
@@ -405,7 +419,7 @@ def scan_windows(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 
     seen_first_ids = set()
     assert isinstance(PAGE_LIMIT, int) and PAGE_LIMIT > 0, "PAGE_LIMIT must be a positive int"
     for page in range(max_pages):
-        page = get_diagnostics_logs(headers, from_iso, to_iso, offset)
+        page = get_diagnostics_logs(headers, from_iso, to_iso, offset,report_tag=report_tag)
 
         if not page:
             # empty page → nothing else to fetch
