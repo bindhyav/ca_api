@@ -251,26 +251,44 @@ def ts_ms_to_ist(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone(IST).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def _find_value_in_dict(d, key):
-    """Return the value for key if present somewhere in nested dicts (non-cyclic, shallow recursion)."""
-    if not isinstance(d, dict):
-        return None
-    if key in d:
-        return d[key]
-    for v in d.values():
-        if isinstance(v, dict):
-            found = _find_value_in_dict(v, key)
-            if found is not None:
-                return found
-    return None
+# def _find_value_in_dict(d, key):
+#     """Recursively search for a key value in nested dictionaries and return the value."""
+#     if not isinstance(d, dict):
+#         return None
+#     if key in d:
+#         return d[key]
+#     for v in d.values():
+#         if isinstance(v, dict):
+#             found = _find_value_in_dict(v, key)
+#             if found is not None:
+#                 return found
+#     return None
 
 def normalize_expected_value(expected_value):
-    """Convert expected value to lowercase list."""
+    """Normailze expected value(s) to a list of lowercase strings for comparison.
+    Parameters:
+        expected_value : str | list
+            Expected value(s) to normalize.
+    Returns:
+        list[str]
+      """
+
     if isinstance(expected_value, list):
         return [str(value).lower() for value in expected_value]
     return [str(expected_value).lower()]
 
-def extract_possible_values(log_item, key_name):
+def extract_values(log_item, key_name):
+    """ Extract the values associated with given key from 'details' section.
+     This function searches for both the top-level fields and nested details field within a log dictionary
+     to collect all the values that is corresponded to the specified key.It handles the multiple
+     data types including strings, lists, tuples, and dictionaries.
+    Parameters:
+            log_item : dict
+            key_name : str
+
+    Returns:
+        list[str]
+     """
     possible_values = []
     # 1. Direct key from log item
     value = log_item.get(key_name)
@@ -311,6 +329,16 @@ def extract_possible_values(log_item, key_name):
     return unique_values
 
 def is_match(value, expected_patterns):
+    """This function checks the a given value matches any of the expected patterns.
+         1.It supports Case-insensitive substring checks.
+         2.Direct filename or path comparisons.
+         3.File extension matching with patterns like '*.ext' or '.ext'.
+    Parameter:
+        value : str
+        Expected_patterns : list[str]
+    Returns:
+        bool
+        """
     value = str(value).lower()
     try:
         path = PurePath(value)
@@ -333,18 +361,19 @@ def is_match(value, expected_patterns):
     return False
 
 
-def get_diagnostics_logs(headers: dict, serial: str, from_iso: str, to_iso: str) -> list:
+def get_diagnostics_logs(headers: dict, from_iso: str, to_iso: str,offset : int) -> list:
     """
     Go to Diagnostics page for the given device serial using Analytics API.
     Fetches diagnostics logs within the given time window.
     """
-    device_type = get_selected_device()
-    url = f"{API_BASE}/diagnostics/{serial}"
+    url = f"{API_BASE}/diagnostics/{DEVICE_ID}"
+    device_type = get_device_type(headers,DEVICE_ID)
     params = {
         "deviceType": device_type,
         "from": from_iso,
         "to": to_iso,
-        "limit": 1000
+        "limit": PAGE_LIMIT,
+        "offset": offset,
     }
     r = requests.get(url, headers=headers, params=params, timeout=30)
     r.raise_for_status()
@@ -395,3 +424,21 @@ def scan_windows(headers: dict, from_iso: str, to_iso: str, *, max_pages: int = 
             return out
         offset += PAGE_LIMIT
     raise RuntimeError("Aborting after max_pages – pagination likely broken.")
+
+def _item_has_audiolog_tag(item):
+    """
+    Heuristic: check several common fields for 'audiolog' substring.
+    Adjust field names if your API uses a different property.
+    """
+    if not isinstance(item, dict):
+        return False
+    for key in ("tag", "reportTag", "type", "name", "report_tag"):
+        v = item.get(key)
+        if isinstance(v, str) and "audio" in v.lower():
+            return True
+    # filenames or paths
+    for key in ("fileName", "filename", "path", "url"):
+        v = item.get(key)
+        if isinstance(v, str) and "audio" in v.lower():
+            return True
+    return False

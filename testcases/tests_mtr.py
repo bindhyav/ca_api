@@ -1,9 +1,8 @@
 """ Test cases for TEAMS related testcases"""
 
-
 from datetime import datetime, timedelta, timezone
-import pytest
 import json, time, os
+import pytest
 # from utils import get_auth_and_cookie
 from modules import events as ev
 # from modules.extraction import dump_event_main, extract_edid_file
@@ -118,8 +117,8 @@ util.have_auth()
 #         print(f"…no match yet (scanned {last_count}). Sleeping {ev.POLL_INTERVAL_MIN} min")
 #         time.sleep(ev.POLL_INTERVAL_MIN * 60)
 #     assert found, f"Expected ConnectedDisplay not found (scanned last page count={last_count})"
-
-
+#
+#
 # def test_device_mode_is_appliance():
 #     """
 #     call get_device_mode() from mode.py and assert
@@ -163,28 +162,31 @@ util.have_auth()
 #     else:
 #         assert download_path and isinstance(download_path, str)
 #         print(f"Downloaded: {download_path}")
-
+#
 # def test_edid_file():
-#     # --- auth from your config files ---
+#     """This function verify EDID file from an On-demand Bugreport
+#         1.Trigger On-Demand bug report.
+#         2. Poll for the generated bug report and download once it is available.
+#         3.Extract the Bug report and search for the EDID file in the.
+#         4.Validate EDID file is found successfully.
+#     """
 #     jwt, cookie = get_auth_and_cookie()
 #     # jwt = generate.load(generate.AUTH_PATH)
 #     # cookie = generate.load(generate.COOKIE_PATH)
 #     if not (jwt or cookie):
 #         pytest.skip("Missing auth/cookie in ./config (auth.txt or cookie.txt)")
-#
 #     # --- trigger via ADB (no download) ---
 #     trigger_time = generate.trigger_on_demand(generate.DEVICE)
-#
 #     try:
 #         download_path = generate.poll_and_download_ondemand(
 #             jwt, cookie, trigger_time,
 #             poll_minutes=10, poll_every_sec=60
 #         )
 #     except TimeoutError:
-#         pytest.fail("✗ ON-DEMAND bugreport did not appear within the poll window.")
+#         pytest.fail("ON-DEMAND bugreport did not appear within the poll window.")
 #     else:
 #         assert download_path and isinstance(download_path, str)
-#         print(f"✓ Downloaded: {download_path}")
+#         print(f"Downloaded: {download_path}")
 #     # ---- 5) Extract events from the downloaded bug report ----
 #     try:
 #         edid_file=extract_edid_file()
@@ -193,129 +195,111 @@ util.have_auth()
 #     except Exception as e:
 #         pytest.fail(f"Event extraction failed: {e}")
 #         return
+#
+# def test_events():
+#     """This function will test the events once after rebooting the device.
+#         1.Authenticate and retrieves the target device serial number.
+#         2.Reboot the device and wait for the device to come online.
+#         3.Calculates a time window around the reboot(pre-and post-reboot).
+#         4.Loads events  and its details from a JSON file.
+#         5.Polls the event logs within the defined time window to find expected events.
+#         """
+#     # --- Authenticate ---
+#     if not util.have_auth():
+#         pytest.skip("Missing auth/cookie")
+#     headers = util.build_headers()
+#     device_serial = util.get_selected_device()
+#     reboot_time = ev.reboot_and_wait(device_serial)
+#     # ---time window ---
+#     from_time = ev.iso_ist(reboot_time - timedelta(minutes=ev.PRE_REBOOT_MIN))
+#     to_time = ev.iso_ist(reboot_time + timedelta(minutes=ev.POST_REBOOT_MIN))
+#     print(f"Fixed window (IST): {from_time} to {to_time}")
+#     # --- Load events from JSON file ---
+#     events_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "event_file.json")
+#     try:
+#         with open(events_file, "r", encoding="utf-8") as file:
+#             json_events = json.load(file)
+#     except Exception as error:
+#         pytest.skip(f"Cannot read event_file.json: {error}")
+#     # --- Poll and check events ---
+#     pending_events = [dict(event) for event in json_events]
+#     found_events = []
+#     deadline = time.time() + ev.POLL_TIMEOUT_MIN * 60
+#     while pending_events and time.time() < deadline:
+#         logs = ev.scan_window(headers, from_time, to_time)
+#         for event_entry in list(pending_events):
+#             event_name = event_entry.get("event")
+#             event_key = event_entry.get("key")
+#             expected_patterns = ev.normalize_expected_value(event_entry.get("expected_value"))
+#             for log_item in logs:
+#                 if log_item.get("type") != event_name:
+#                     continue
+#                 possible_values= ev.extract_values(log_item, event_key)
+#                 matched_value=next((val for val in possible_values if ev.is_match(val, expected_patterns)),None)
+#                 if matched_value:
+#                     print(f"Matched event '{event_name}' key '{event_key}' with value '{matched_value}'")
+#                     found_events.append(event_name)
+#                     pending_events.remove(event_entry)
+#                     break
+#         if pending_events:
+#             time.sleep(ev.POLL_INTERVAL_MIN * 60)
+#     print(f"Found events: {found_events}")
+#     print(f"Pending events: {pending_events}")
+#     assert not pending_events, f"Events not found: {pending_events}"
 
-def test_events_from_json_simple():
-
-
-    # --- Setup authentication and device ---
+def test_diagnostics_logs():
     if not util.have_auth():
-        pytest.skip("Missing auth/cookie")
-
-    headers = util.build_headers()
-    device_serial = util.get_selected_device()
-    reboot_time = ev.reboot_and_wait(device_serial)
-
-    # --- Define time window ---
-    from_time = ev.iso_ist(reboot_time - timedelta(minutes=ev.PRE_REBOOT_MIN))
-    to_time = ev.iso_ist(reboot_time + timedelta(minutes=ev.POST_REBOOT_MIN))
-    print(f"Fixed window (IST): {from_time} to {to_time}")
-    # --- Load JSON event list ---
-    events_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "event_file.json")
+        pytest.skip("Missing auth in config/auth.txt or cookie in config/cookie.txt")
     try:
-        with open(events_file, "r", encoding="utf-8") as file:
-            json_events = json.load(file)
-    except Exception as error:
-        pytest.skip(f"Cannot read event_file.json: {error}")
+        headers = util.build_headers()
+    except Exception as e:
+        pytest.fail(f"Auth configuration error: {e}")
+        return
+    # ---- 2) Reboot device via ADB ----
+    serial = None
+    try:
+        serial = util.get_selected_device()
+    except Exception as e:
+        pytest.skip(f"No online ADB device: {e}")
+    reboot_ist = ev.reboot_and_wait(serial)
+    # Build the fixed IST window used by the app code
+    from_iso = ev.iso_ist(reboot_ist - timedelta(minutes=ev.PRE_REBOOT_MIN))
+    to_iso = ev.iso_ist(reboot_ist + timedelta(minutes=ev.POST_REBOOT_MIN))
+    print(f"Fixed window (IST): {from_iso} to {to_iso}")
 
-    # --- Helper: normalize expected value ---
-    # def normalize_expected_value(expected_value):
-    #     """Convert expected value to lowercase list."""
-    #     if isinstance(expected_value, list):
-    #         return [str(value).lower() for value in expected_value]
-    #     return [str(expected_value).lower()]
-
-    # --- Helper: extract all possible values from event ---
-    # def extract_possible_values(log_item, key_name):
-    #     possible_values = []
-    #
-    #     # 1. Direct key from log item
-    #     value = log_item.get(key_name)
-    #     if value is not None:
-    #         if isinstance(value, (list, tuple)):
-    #             possible_values.extend(map(str, value))
-    #         elif isinstance(value, dict):
-    #             possible_values.extend(map(str, value.values()))
-    #         else:
-    #             possible_values.append(str(value))
-    #
-    #     # 2. Parse 'details' section
-    #     details = log_item.get("details")
-    #     if isinstance(details, str):
-    #         try:
-    #             details = json.loads(details)
-    #         except Exception:
-    #             possible_values.append(details)
-    #             details = None
-    #
-    #     if isinstance(details, dict):
-    #         # Specific key match
-    #         if key_name in details:
-    #             val = details[key_name]
-    #             if isinstance(val, (list, tuple)):
-    #                 possible_values.extend(map(str, val))
-    #             else:
-    #                 possible_values.append(str(val))
-    #         # Add all other values
-    #         for val in details.values():
-    #             if isinstance(val, (list, tuple)):
-    #                 possible_values.extend(map(str, val))
-    #             else:
-    #                 possible_values.append(str(val))
-    #     elif isinstance(details, (list, tuple)):
-    #         possible_values.extend(map(str, details))
-    #
-    #     # Remove duplicates and empty strings
-    #     unique_values = [v.strip() for v in dict.fromkeys(possible_values) if v.strip()]
-    #     return unique_values
-
-    # --- Helper: pattern matching logic ---
-    # def is_match(value, expected_patterns):
-    #     value = str(value).lower()
-    #     try:
-    #         path = PurePath(value)
-    #         file_name = path.name.lower()
-    #         extension = path.suffix.lower()
-    #     except Exception:
-    #         file_name, extension = value, ""
-    #
-    #     for pattern in expected_patterns:
-    #         if not pattern:
-    #             continue
-    #         if pattern in value or pattern in file_name:
-    #             return True
-    #         if pattern.startswith("*.") and extension == pattern[1:]:
-    #             return True
-    #         if pattern.startswith(".") and extension == pattern:
-    #             return True
-    #         if fnmatch.fnmatch(value, pattern) or fnmatch.fnmatch(file_name, pattern):
-    #             return True
-    #     return False
-
-    # --- Poll and check events ---
-    pending_events = [dict(event) for event in json_events]
-    found_events = []
-    deadline = time.time() + ev.POLL_TIMEOUT_MIN * 60
-
-    while pending_events and time.time() < deadline:
-        logs = ev.scan_window(headers, from_time, to_time)
-        for event_entry in list(pending_events):
-            event_name = event_entry.get("event")
-            event_key = event_entry.get("key")
-            expected_patterns = ev.normalize_expected_value(event_entry.get("expected_value"))
-            for log_item in logs:
-                if log_item.get("type") != event_name:
-                    continue
-                possible_values= ev.extract_possible_values(log_item, event_key)
-                matched_value=next((val for val in possible_values if ev.is_match(val, expected_patterns)),None)
-                if matched_value:
-                    print(f"Matched event '{event_name}' key '{event_key}' with value '{matched_value}'")
-                    found_events.append(event_name)
-                    pending_events.remove(event_entry)
-                    break
-        if pending_events:
+    deadline = datetime.now(ev.IST) + timedelta(minutes=ev.POLL_TIMEOUT_MIN)
+    found = False
+    last_count = 0
+    while datetime.now(ev.IST) < deadline and not found:
+        try:
+            page = ev.scan_windows(headers, from_iso, to_iso,report_tag ='audiologs')
+        except TypeError:
+            chosen_server_filter= False
+            page = ev.scan_windows(headers, from_iso, to_iso)
+        except Exception as e:
+            print(f"scan_windows_raise{e}; retrying until deadline")
             time.sleep(ev.POLL_INTERVAL_MIN * 60)
-    print(f"Found events: {found_events}")
-    print(f"Pending events: {pending_events}")
-    assert not pending_events, f"Events not found: {pending_events}"
+            continue
+        if page is None:
+            page =[]
+        last_count = len(page)
+        print(f"Scanned {last_count} (server_filter={chosen_server_filter})")
+        if chosen_server_filter:
+            if last_count > 0 :
+                found = True
+                sample = page[0]
+                print("server-side filtered audiologs found (sample):", sample)
+                break
+        else:
+            matches = [item for item in page if ev._item_has_audiolog_tag(item)]
+            if matches:
+                found = True
+                print("client-side filtered audiologs found:")
+                break
+    assert found , f"Expected  diagnostics audiologs not found (scanned last page count={last_count})"
+
+
+
+
 
 
